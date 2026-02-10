@@ -1,8 +1,10 @@
-# Golf Swing Analyzer
+# Pure — Golf Swing Analyzer
 
-Compare your golf swing to Tiger Woods' iconic 2000 iron swing using computer vision pose estimation. Upload down-the-line (DTL) and face-on (FO) videos, and get back angle comparisons, top 3 faults, and drill recommendations.
+**"Swing pure"**
 
-**Current status:** Phase 0 complete (pipeline validated). V1 is iron-only; driver support is planned for a future release.
+Compare your golf swing to Tiger Woods' iconic 2000 iron swing using computer vision. Upload down-the-line (DTL) and face-on (FO) videos, and get back angle comparisons, top 3 faults, and drill recommendations.
+
+**Current status:** Phase 1 complete. V1 is iron-only; driver support is planned for a future release.
 
 ---
 
@@ -36,31 +38,75 @@ Compare vs reference_data/iron/*.json  →  deltas + top 3 faults
 ```
 golf_swing_analyzer/
 ├── README.md
+├── CLAUDE.md                              # Brand & design system reference
 ├── .gitignore
-├── Golf Swing PRD Anlayzer v4.md       # Full product requirements document
+├── Golf Swing PRD Anlayzer v4.md          # Full product requirements document
 │
-├── scripts/                            # Python processing pipeline
-│   ├── extract_landmarks.py            # MediaPipe pose extraction from video
-│   ├── calculate_angles.py             # Golf angle calculations at each phase
-│   ├── detect_phases.py                # Auto-detect swing phases from landmarks
-│   ├── build_reference_json.py         # Generate Tiger reference data files
-│   └── pose_landmarker_heavy.task      # MediaPipe model binary (not in git)
+├── assets/
+│   └── pure-logo.jpeg                     # Brand logo (golfer silhouette)
 │
-├── reference_data/                     # Pre-computed reference swings
-│   └── iron/                           # Tiger Woods 2000 iron
+├── frontend/                              # Next.js app (deploys to Vercel)
+│   ├── src/
+│   │   ├── app/
+│   │   │   ├── layout.tsx                 # Root layout: Inter font, dark bg
+│   │   │   ├── page.tsx                   # Landing page
+│   │   │   ├── globals.css                # Tailwind + Pure design tokens
+│   │   │   └── upload/
+│   │   │       └── page.tsx               # Upload page
+│   │   ├── components/
+│   │   │   ├── Header.tsx                 # Nav bar: logo, brand name, CTA
+│   │   │   ├── Footer.tsx                 # Minimal footer
+│   │   │   ├── HeroSection.tsx            # Landing hero: tagline + CTA
+│   │   │   ├── FeatureCards.tsx            # 3 value proposition cards
+│   │   │   ├── SwingTypeSelector.tsx       # Iron (active) / Driver ("Coming Soon")
+│   │   │   ├── VideoDropZone.tsx           # Drag-and-drop upload area
+│   │   │   ├── UploadForm.tsx             # Orchestrates upload flow + state
+│   │   │   └── Button.tsx                 # Branded button component
+│   │   ├── lib/
+│   │   │   ├── api.ts                     # API client (uploadVideos)
+│   │   │   ├── validation.ts              # File type, size, duration checks
+│   │   │   └── constants.ts               # Brand values, limits, accepted types
+│   │   └── types/
+│   │       └── index.ts                   # TypeScript interfaces
+│   ├── public/
+│   │   └── pure-logo.jpeg                 # Logo for frontend
+│   ├── .env.local                         # NEXT_PUBLIC_API_URL
+│   └── package.json
+│
+├── backend/                               # FastAPI app (deploys to Railway)
+│   ├── main.py                            # App entry, CORS, router mount
+│   ├── app/
+│   │   ├── config.py                      # Settings (upload dir, origins, limits)
+│   │   ├── routes/
+│   │   │   └── upload.py                  # POST /api/upload endpoint
+│   │   ├── models/
+│   │   │   └── schemas.py                 # Pydantic response models
+│   │   └── storage/
+│   │       └── local.py                   # Save files to local filesystem
+│   ├── requirements.txt
+│   ├── Procfile                           # Railway start command
+│   └── .env.example
+│
+├── scripts/                               # Python processing pipeline
+│   ├── extract_landmarks.py               # MediaPipe pose extraction from video
+│   ├── calculate_angles.py                # Golf angle calculations at each phase
+│   ├── detect_phases.py                   # Auto-detect swing phases from landmarks
+│   ├── build_reference_json.py            # Generate Tiger reference data files
+│   └── pose_landmarker_heavy.task         # MediaPipe model binary (not in git)
+│
+├── reference_data/                        # Pre-computed reference swings
+│   └── iron/                              # Tiger Woods 2000 iron
 │       ├── tiger_2000_iron_dtl_reference.json
 │       └── tiger_2000_iron_face_on_reference.json
 │
-├── output/                             # Tiger's processed data (not in git)
+├── output/                                # Tiger's processed data (not in git)
 │   ├── dtl_landmarks.json
 │   ├── fo_landmarks.json
-│   ├── dtl_phases.json
-│   ├── fo_phases.json
+│   ├── dtl_phases.json / fo_phases.json
 │   ├── angle_analysis.json
-│   ├── dtl_frames/                     # Annotated frame images
-│   └── fo_frames/
+│   └── dtl_frames/ / fo_frames/
 │
-└── output_user/                        # User test analysis (not in git)
+└── output_user/                           # User test analysis (not in git)
     ├── *_landmarks.json
     ├── *_phases.json
     ├── *_angle_analysis.json
@@ -69,104 +115,129 @@ golf_swing_analyzer/
 
 ---
 
-## Prerequisites
+## Quick Start
 
-- **Python 3.10+**
-- **MediaPipe model:** Download `pose_landmarker_heavy.task` (~30MB) into `scripts/`:
-  ```
-  curl -o scripts/pose_landmarker_heavy.task \
-    https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task
-  ```
+### Run the frontend
 
-### Install dependencies
+```bash
+cd frontend
+npm install
+npm run dev
+# → http://localhost:3000
+```
+
+### Run the backend
+
+```bash
+cd backend
+pip install -r requirements.txt
+python3 -m uvicorn main:app --reload --port 8000
+# → http://localhost:8000
+```
+
+Set `NEXT_PUBLIC_API_URL=http://localhost:8000` in `frontend/.env.local` (already configured).
+
+### Run the pose pipeline (scripts)
 
 ```bash
 pip install mediapipe opencv-python numpy
 ```
 
-Or with a virtual environment:
-
+Download the MediaPipe model (~30MB):
 ```bash
-python -m venv .venv
-source .venv/bin/activate
-pip install mediapipe opencv-python numpy
+curl -o scripts/pose_landmarker_heavy.task \
+  https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task
 ```
 
 ---
 
-## Usage
+## Tech Stack
 
-### 1. Extract landmarks from a video
+| Layer | Technology | Deploy target |
+|-------|-----------|--------------|
+| Frontend | Next.js 16, TypeScript, Tailwind CSS v4 | Vercel |
+| Backend | FastAPI, Python 3.10+ | Railway |
+| Pose estimation | MediaPipe Pose Landmarker (heavy) | Pipeline scripts |
+| Storage | Local filesystem (Phase 1), cloud bucket planned | — |
+| Auth | Google OAuth (deferred, not yet implemented) | — |
 
-```bash
-python scripts/extract_landmarks.py
+---
+
+## Design System
+
+Brand name: **Pure** — Tagline: **"Swing pure"**
+
+| Role | Name | Hex |
+|------|------|-----|
+| Primary base | Blue Charcoal | `#021B22` |
+| Primary accent | Cream | `#F6F1E5` |
+| Secondary accent 1 | Forest Green | `#2E5B3B` |
+| Secondary accent 2 | Pastel Yellow | `#F4D76A` |
+| Pop accent | Cardinal Red | `#C53A3A` |
+
+- **Blue Charcoal** — Core background / dark surfaces
+- **Cream** — Text on dark backgrounds, light surfaces
+- **Forest Green** — Secondary UI elements, success states, selected states
+- **Pastel Yellow** — Highlights, callouts, "Coming Soon" badges
+- **Cardinal Red** — CTA buttons, error states, alerts
+
+Font: **Inter** (Google Fonts)
+
+---
+
+## API Reference
+
+### `GET /api/health`
+
+Health check. Returns `{ "status": "ok", "version": "0.1.0" }`.
+
+### `POST /api/upload`
+
+Upload two swing videos for analysis.
+
+**Request:** `multipart/form-data`
+
+| Field | Type | Required | Description |
+|-------|------|----------|-------------|
+| `swing_type` | string | Yes | `"iron"` (only valid value in v1) |
+| `video_dtl` | file | Yes | Down-the-line video (.mov/.mp4, max 30s) |
+| `video_fo` | file | Yes | Face-on video (.mov/.mp4, max 30s) |
+
+**Success (200):**
+```json
+{
+  "status": "success",
+  "upload_id": "uuid",
+  "swing_type": "iron",
+  "files": {
+    "dtl": { "filename": "...", "size_bytes": 0, "content_type": "video/mp4" },
+    "fo": { "filename": "...", "size_bytes": 0, "content_type": "video/mp4" }
+  },
+  "message": "Videos uploaded successfully. Analysis will be available in Phase 2."
+}
 ```
 
-> **Note:** Currently reads video paths hardcoded in `main()`. To process your own videos, update the `videos` dict in `extract_landmarks.py:249-252` to point to your `.mov` or `.mp4` files.
+**Errors:** `400` for invalid swing type or file type.
 
-**Outputs:** `output/<label>_landmarks.json` and annotated frame images in `output/<label>_frames/`.
+---
 
-### 2. Detect swing phases
+## Client-Side Validation
 
-```bash
-python scripts/detect_phases.py <landmarks.json> --view dtl|fo
-```
+Videos are validated in the browser before upload:
 
-Example:
-```bash
-python scripts/detect_phases.py output/dtl_landmarks.json --view dtl
-python scripts/detect_phases.py output_user/tim_dtl_trim_landmarks.json --view dtl
-```
-
-Optional tuning parameters:
-- `--smoothing-window N` — Rolling average window size (default: 5)
-- `--velocity-window N` — Velocity computation window (default: 10)
-- `--still-threshold F` — Max velocity for "still" classification (default: 0.001)
-
-**Output:** `<input_basename>_phases.json`
-
-### 3. Calculate angles
-
-```bash
-python scripts/calculate_angles.py
-```
-
-With auto-detected phases (instead of hardcoded Tiger frames):
-```bash
-python scripts/calculate_angles.py --auto-detect
-```
-
-Custom input/output paths:
-```bash
-python scripts/calculate_angles.py \
-  --dtl output_user/tim_dtl_trim_landmarks.json \
-  --fo output_user/tim_fo_landmarks.json \
-  --output output_user/tim_angle_analysis.json \
-  --auto-detect
-```
-
-**Output:** `output/angle_analysis.json` — angles at each phase for both views, plus validation results.
-
-### 4. Build reference data (one-time)
-
-Only needed if re-processing Tiger's source videos:
-```bash
-python scripts/build_reference_json.py
-```
-
-Reads from `output/dtl_landmarks.json` and `output/fo_landmarks.json`, writes to `reference_data/iron/`.
+1. **File type** — must be `.mp4` or `.mov` (checks MIME type with extension fallback)
+2. **File size** — max 100MB
+3. **Duration** — max 30 seconds (read via HTML5 `<video>` element metadata)
+4. **Both angles required** — submit button disabled until both DTL and FO are valid
 
 ---
 
 ## Reference Data
 
-The `reference_data/iron/` directory contains pre-computed Tiger Woods 2000 iron swing data used for comparison. Each file includes:
+The `reference_data/iron/` directory contains pre-computed Tiger Woods 2000 iron swing data. Each file includes:
 
 - **Metadata:** golfer, year, swing type, video specs, detection rate, pose model
-- **Per-phase data** (address, top, impact, follow-through):
-  - Frame number and timestamp
-  - Computed angles
-  - Key landmark positions (normalized 0-1 coordinates)
+- **Per-phase data** (address, top, impact, follow-through): frame number, timestamp, computed angles, key landmark positions
 
 ### Angles by view
 
@@ -186,17 +257,33 @@ The `reference_data/iron/` directory contains pre-computed Tiger Woods 2000 iron
 
 ---
 
-## Phase Detection Algorithm
+## Pipeline Scripts
 
-The auto-detection in `detect_phases.py` works by tracking the right wrist Y-position:
+### 1. Extract landmarks
 
-1. **Smooth** the raw signal with a rolling average to remove jitter
-2. **Find top of backswing** — first significant local minimum of hand Y (hands highest) followed by a velocity spike (downswing)
-3. **Find address** — last period of stillness before takeaway where hands are low (near ball level)
-4. **Find impact** — first frame after top where hand Y returns to near address level
-5. **Find follow-through** — first local minimum of hand Y after impact (hands rise again to finish)
+```bash
+python scripts/extract_landmarks.py
+```
 
-The algorithm handles videos with pre-shot routines, waggles, and variable start positions.
+> **Note:** Video paths are hardcoded in `main()`. Update the `videos` dict to point to your files.
+
+### 2. Detect swing phases
+
+```bash
+python scripts/detect_phases.py <landmarks.json> --view dtl|fo
+```
+
+### 3. Calculate angles
+
+```bash
+python scripts/calculate_angles.py --auto-detect
+```
+
+### 4. Build reference data (one-time)
+
+```bash
+python scripts/build_reference_json.py
+```
 
 ---
 
@@ -205,47 +292,46 @@ The algorithm handles videos with pre-shot routines, waggles, and variable start
 - **Every frame analyzed** — no keyframe sampling, maximizes fidelity for short (<30s) swing clips
 - **View-specific calculations** — some angles are only meaningful from one camera angle (e.g., X-factor from FO, spine angle from DTL)
 - **`swing_type` field in all data** — enables future expansion to driver, fairway woods, etc. without schema changes
-- **Reference data organized by club** — `reference_data/iron/`, with `reference_data/driver/` reserved for future use
+- **Reference data organized by club** — `reference_data/iron/`, with `reference_data/driver/` reserved
 - **Right-handed golfer assumed** — lead arm = left, trail arm = right
-
----
-
-## Validation
-
-`calculate_angles.py` includes a validation step that checks computed angles against golf instruction norms:
-
-| Check | Expected range |
-|-------|---------------|
-| DTL address spine angle | 20-50 |
-| DTL address knee flex | 130-175 |
-| DTL spine angle maintained (top/impact vs address) | within 15 |
-| DTL top right elbow | 70-110 (folded) |
-| FO top shoulder line change | >5 from address |
-| FO top X-factor | non-zero |
-| FO address knee flex (both) | 130-175 |
-
-All checks passed on Tiger's reference data.
+- **Frontend and backend independently deployable** — Next.js on Vercel, FastAPI on Railway
+- **Auth deferred** — upload flow built first, Google OAuth to be added later
+- **Local filesystem storage for Phase 1** — will move to cloud bucket with 24-hour auto-delete
+- **Client-side validation before upload** — reduces backend load and gives instant feedback
+- **Tailwind CSS v4 with `@theme` tokens** — design system colors defined as CSS custom properties, no `tailwind.config.ts`
+- **`react-dropzone` for file upload UX** — handles drag-and-drop and file selection cleanly
+- **`useReducer` for upload form state** — manages the multi-step upload flow (swing type + two files + submission) without a global store
 
 ---
 
 ## Roadmap
 
-The full PRD is in `Golf Swing PRD Anlayzer v4.md`. Summary of remaining phases:
-
 | Phase | Scope | Status |
 |-------|-------|--------|
 | **0** | Tiger reference data & pipeline validation | Done |
-| **1** | Auth (Google OAuth), upload UI, FastAPI backend skeleton | Not started |
+| **1** | Landing page, upload UI, FastAPI backend skeleton | Done |
 | **2** | Pose estimation API, phase auto-detection, comparison engine, feedback rules | Not started |
 | **3** | Results UI, side-by-side video player with skeleton overlays, angle table | Not started |
 | **4** | Drill content curation, onboarding, polish, QA | Not started |
 | **5+** | Driver swing support, additional clubs, more pro references | Future |
 
-### Planned tech stack (Phases 1+)
-- **Frontend:** React / Next.js
-- **Backend:** FastAPI
-- **Auth:** Google OAuth
-- **Storage:** Temporary cloud bucket (24-hour auto-delete for uploaded videos)
+### Phase 1 deliverables (completed)
+
+- Next.js 16 frontend with Tailwind CSS v4 and Pure design system
+- Landing page: header, hero section ("Swing pure"), 3 feature cards, footer
+- Upload page: swing type selector (Iron active, Driver "Coming Soon"), dual drag-and-drop video upload, client-side validation, submit flow
+- FastAPI backend with `POST /api/upload` (accepts swing_type + two videos, saves to local filesystem)
+- `GET /api/health` endpoint
+- CORS configured for local development
+- Responsive design (mobile → desktop)
+
+### Phase 2 (next)
+
+- Integrate MediaPipe pipeline into FastAPI (`POST /api/analyze-swing`)
+- Auto-detect swing phases from uploaded videos
+- Compare user angles to Tiger reference data
+- Return top 3 differences with coaching feedback
+- Target: <60 seconds processing time
 
 ---
 
@@ -260,9 +346,9 @@ The full PRD is in `Golf Swing PRD Anlayzer v4.md`. Summary of remaining phases:
 ## Contributing
 
 1. Clone the repo
-2. Set up the Python environment (see [Prerequisites](#prerequisites))
+2. Set up the Python environment (see [Quick Start](#quick-start))
 3. Download the MediaPipe model into `scripts/`
-4. Run the pipeline on your own swing video to verify everything works end-to-end
+4. Run `npm install` in `frontend/` and `pip install -r requirements.txt` in `backend/`
 
 When adding a new swing type (e.g., driver):
 1. Source high-quality DTL and FO reference videos
