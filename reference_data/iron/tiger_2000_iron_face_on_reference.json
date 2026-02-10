@@ -1,0 +1,442 @@
+{
+  "metadata": {
+    "golfer": "Tiger Woods",
+    "year": 2000,
+    "swing_type": "iron",
+    "view": "face_on",
+    "source_video": "Tiger Woods FO Iron.mov",
+    "video_resolution": "480x854",
+    "video_fps": 30.0,
+    "total_frames": 113,
+    "detection_rate_pct": 100.0,
+    "pose_model": "mediapipe_pose_landmarker_heavy",
+    "notes": [
+      "FO view compresses knee flex (appears straighter than actual 3D value)",
+      "Shoulder/hip rotation measured via line angle relative to horizontal",
+      "X-factor (shoulder-hip separation) is the key rotation metric from this view",
+      "Spine tilt measured as lateral lean of spine from vertical"
+    ]
+  },
+  "phases": [
+    {
+      "swing_type": "iron",
+      "view": "face_on",
+      "phase": "address",
+      "frame": 0,
+      "timestamp_sec": 0.0,
+      "description": "Stable setup, pre-takeaway",
+      "angles": {
+        "shoulder_line_angle": 172.7,
+        "hip_line_angle": 175.8,
+        "x_factor": -3.1,
+        "spine_tilt": -24.6,
+        "lead_arm_torso": 5.3,
+        "right_knee_flex": 170.1,
+        "left_knee_flex": 176.0,
+        "right_elbow": 175.0,
+        "left_elbow": 161.5
+      },
+      "key_landmarks": {
+        "left_shoulder": {
+          "x": 0.569202,
+          "y": 0.391199,
+          "z": -0.826624,
+          "visibility": 1.0
+        },
+        "right_shoulder": {
+          "x": 0.438314,
+          "y": 0.407874,
+          "z": -0.789412,
+          "visibility": 1.0
+        },
+        "left_elbow": {
+          "x": 0.564079,
+          "y": 0.455431,
+          "z": -0.763173,
+          "visibility": 0.9902
+        },
+        "right_elbow": {
+          "x": 0.473828,
+          "y": 0.465071,
+          "z": -0.700102,
+          "visibility": 0.9968
+        },
+        "left_wrist": {
+          "x": 0.542708,
+          "y": 0.505638,
+          "z": -0.888961,
+          "visibility": 0.9812
+        },
+        "right_wrist": {
+          "x": 0.512689,
+          "y": 0.51689,
+          "z": -0.826245,
+          "visibility": 0.9956
+        },
+        "left_hip": {
+          "x": 0.570139,
+          "y": 0.462502,
+          "z": 0.003089,
+          "visibility": 1.0
+        },
+        "right_hip": {
+          "x": 0.49761,
+          "y": 0.467876,
+          "z": -0.002971,
+          "visibility": 1.0
+        },
+        "left_knee": {
+          "x": 0.594618,
+          "y": 0.552028,
+          "z": -0.056506,
+          "visibility": 0.9297
+        },
+        "right_knee": {
+          "x": 0.494961,
+          "y": 0.55062,
+          "z": -0.083072,
+          "visibility": 0.9752
+        },
+        "left_ankle": {
+          "x": 0.609847,
+          "y": 0.628624,
+          "z": 0.266555,
+          "visibility": 0.9766
+        },
+        "right_ankle": {
+          "x": 0.478408,
+          "y": 0.629981,
+          "z": 0.224307,
+          "visibility": 0.9791
+        },
+        "left_index": {
+          "x": 0.535953,
+          "y": 0.519463,
+          "z": -1.001444,
+          "visibility": 0.9675
+        },
+        "right_index": {
+          "x": 0.52122,
+          "y": 0.530001,
+          "z": -0.946442,
+          "visibility": 0.9893
+        }
+      }
+    },
+    {
+      "swing_type": "iron",
+      "view": "face_on",
+      "phase": "top",
+      "frame": 42,
+      "timestamp_sec": 1.4,
+      "description": "Top of backswing, max shoulder turn",
+      "angles": {
+        "shoulder_line_angle": 177.0,
+        "hip_line_angle": 179.2,
+        "x_factor": -2.2,
+        "spine_tilt": -22.4,
+        "lead_arm_torso": 104.2,
+        "right_knee_flex": 171.8,
+        "left_knee_flex": 159.4,
+        "right_elbow": 164.7,
+        "left_elbow": 54.8
+      },
+      "key_landmarks": {
+        "left_shoulder": {
+          "x": 0.519776,
+          "y": 0.395989,
+          "z": -0.516656,
+          "visibility": 0.9993
+        },
+        "right_shoulder": {
+          "x": 0.45097,
+          "y": 0.399569,
+          "z": -0.368885,
+          "visibility": 0.9999
+        },
+        "left_elbow": {
+          "x": 0.472305,
+          "y": 0.400045,
+          "z": -0.423752,
+          "visibility": 0.6807
+        },
+        "right_elbow": {
+          "x": 0.397104,
+          "y": 0.382364,
+          "z": -0.138304,
+          "visibility": 0.8328
+        },
+        "left_wrist": {
+          "x": 0.481933,
+          "y": 0.38356,
+          "z": -0.309424,
+          "visibility": 0.6342
+        },
+        "right_wrist": {
+          "x": 0.355149,
+          "y": 0.355156,
+          "z": 0.002467,
+          "visibility": 0.8894
+        },
+        "left_hip": {
+          "x": 0.551131,
+          "y": 0.486833,
+          "z": -0.038997,
+          "visibility": 0.9999
+        },
+        "right_hip": {
+          "x": 0.493403,
+          "y": 0.487594,
+          "z": 0.039052,
+          "visibility": 0.9999
+        },
+        "left_knee": {
+          "x": 0.558997,
+          "y": 0.561379,
+          "z": -0.097138,
+          "visibility": 0.5329
+        },
+        "right_knee": {
+          "x": 0.476451,
+          "y": 0.554892,
+          "z": -0.069441,
+          "visibility": 0.7343
+        },
+        "left_ankle": {
+          "x": 0.592907,
+          "y": 0.629097,
+          "z": 0.078665,
+          "visibility": 0.8108
+        },
+        "right_ankle": {
+          "x": 0.468864,
+          "y": 0.628376,
+          "z": 0.074786,
+          "visibility": 0.8656
+        },
+        "left_index": {
+          "x": 0.492297,
+          "y": 0.377165,
+          "z": -0.344341,
+          "visibility": 0.6488
+        },
+        "right_index": {
+          "x": 0.361536,
+          "y": 0.339561,
+          "z": -0.0203,
+          "visibility": 0.8642
+        }
+      }
+    },
+    {
+      "swing_type": "iron",
+      "view": "face_on",
+      "phase": "impact",
+      "frame": 51,
+      "timestamp_sec": 1.7,
+      "description": "Club at ball position",
+      "angles": {
+        "shoulder_line_angle": 154.3,
+        "hip_line_angle": 175.0,
+        "x_factor": -20.7,
+        "spine_tilt": -41.9,
+        "lead_arm_torso": 4.8,
+        "right_knee_flex": 145.4,
+        "left_knee_flex": 162.6,
+        "right_elbow": 178.9,
+        "left_elbow": 151.9
+      },
+      "key_landmarks": {
+        "left_shoulder": {
+          "x": 0.513971,
+          "y": 0.390744,
+          "z": -0.276213,
+          "visibility": 0.9996
+        },
+        "right_shoulder": {
+          "x": 0.461646,
+          "y": 0.415955,
+          "z": -0.490837,
+          "visibility": 0.9998
+        },
+        "left_elbow": {
+          "x": 0.567826,
+          "y": 0.453208,
+          "z": -0.253947,
+          "visibility": 0.6205
+        },
+        "right_elbow": {
+          "x": 0.549957,
+          "y": 0.464141,
+          "z": -0.54345,
+          "visibility": 0.6921
+        },
+        "left_wrist": {
+          "x": 0.576945,
+          "y": 0.493767,
+          "z": -0.410385,
+          "visibility": 0.5697
+        },
+        "right_wrist": {
+          "x": 0.599757,
+          "y": 0.492579,
+          "z": -0.636232,
+          "visibility": 0.7217
+        },
+        "left_hip": {
+          "x": 0.589481,
+          "y": 0.494693,
+          "z": 0.064697,
+          "visibility": 0.9999
+        },
+        "right_hip": {
+          "x": 0.552671,
+          "y": 0.497892,
+          "z": -0.065038,
+          "visibility": 0.9999
+        },
+        "left_knee": {
+          "x": 0.55162,
+          "y": 0.575949,
+          "z": 0.097846,
+          "visibility": 0.5734
+        },
+        "right_knee": {
+          "x": 0.577974,
+          "y": 0.580637,
+          "z": -0.078788,
+          "visibility": 0.7172
+        },
+        "left_ankle": {
+          "x": 0.483838,
+          "y": 0.650163,
+          "z": 0.246855,
+          "visibility": 0.7892
+        },
+        "right_ankle": {
+          "x": 0.55376,
+          "y": 0.656836,
+          "z": 0.090904,
+          "visibility": 0.8255
+        },
+        "left_index": {
+          "x": 0.573237,
+          "y": 0.505598,
+          "z": -0.477918,
+          "visibility": 0.5793
+        },
+        "right_index": {
+          "x": 0.603703,
+          "y": 0.50631,
+          "z": -0.721295,
+          "visibility": 0.6986
+        }
+      }
+    },
+    {
+      "swing_type": "iron",
+      "view": "face_on",
+      "phase": "follow_through",
+      "frame": 76,
+      "timestamp_sec": 2.5333,
+      "description": "Post-impact, arms extending through",
+      "angles": {
+        "shoulder_line_angle": 151.0,
+        "hip_line_angle": 170.3,
+        "x_factor": -19.3,
+        "spine_tilt": -30.6,
+        "lead_arm_torso": 84.0,
+        "right_knee_flex": 140.2,
+        "left_knee_flex": 168.5,
+        "right_elbow": 57.7,
+        "left_elbow": 69.9
+      },
+      "key_landmarks": {
+        "left_shoulder": {
+          "x": 0.474283,
+          "y": 0.414291,
+          "z": 0.203751,
+          "visibility": 0.9979
+        },
+        "right_shoulder": {
+          "x": 0.448608,
+          "y": 0.428522,
+          "z": -0.357409,
+          "visibility": 0.9935
+        },
+        "left_elbow": {
+          "x": 0.538399,
+          "y": 0.382564,
+          "z": 0.391764,
+          "visibility": 0.0909
+        },
+        "right_elbow": {
+          "x": 0.583694,
+          "y": 0.389211,
+          "z": -0.559711,
+          "visibility": 0.9044
+        },
+        "left_wrist": {
+          "x": 0.480146,
+          "y": 0.327179,
+          "z": 0.48169,
+          "visibility": 0.1778
+        },
+        "right_wrist": {
+          "x": 0.51252,
+          "y": 0.32636,
+          "z": -0.604707,
+          "visibility": 0.788
+        },
+        "left_hip": {
+          "x": 0.580595,
+          "y": 0.582184,
+          "z": 0.159097,
+          "visibility": 0.9994
+        },
+        "right_hip": {
+          "x": 0.537039,
+          "y": 0.589595,
+          "z": -0.159479,
+          "visibility": 0.9992
+        },
+        "left_knee": {
+          "x": 0.58333,
+          "y": 0.709017,
+          "z": 0.195205,
+          "visibility": 0.1802
+        },
+        "right_knee": {
+          "x": 0.527657,
+          "y": 0.718459,
+          "z": -0.172509,
+          "visibility": 0.4035
+        },
+        "left_ankle": {
+          "x": 0.563281,
+          "y": 0.82027,
+          "z": 0.371554,
+          "visibility": 0.2828
+        },
+        "right_ankle": {
+          "x": 0.428683,
+          "y": 0.820946,
+          "z": -0.030467,
+          "visibility": 0.3678
+        },
+        "left_index": {
+          "x": 0.463922,
+          "y": 0.317254,
+          "z": 0.47773,
+          "visibility": 0.2174
+        },
+        "right_index": {
+          "x": 0.479269,
+          "y": 0.314703,
+          "z": -0.680774,
+          "visibility": 0.7516
+        }
+      }
+    }
+  ]
+}

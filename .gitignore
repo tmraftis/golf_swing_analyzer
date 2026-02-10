@@ -1,0 +1,38 @@
+# Generated frame images (huge, regenerable)
+output/*_frames/
+output_user/*_frames/
+output_user/*_key_phases/
+output_user/*_side_by_side*.jpg
+
+# Large landmark JSONs (regenerable from video)
+output/*_landmarks.json
+output_user/*_landmarks.json
+
+# Generated analysis outputs (regenerable)
+output/*_phases.json
+output_user/*_phases.json
+output/angle_analysis.json
+output_user/*_angle_analysis.json
+
+# MediaPipe model binary (30MB, download separately)
+scripts/pose_landmarker_heavy.task
+
+# macOS
+.DS_Store
+
+# Claude Code local settings
+.claude/
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+env/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
