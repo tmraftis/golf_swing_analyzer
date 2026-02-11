@@ -4,7 +4,7 @@
 
 Compare your golf swing to Tiger Woods' iconic 2000 iron swing using computer vision. Upload down-the-line (DTL) and face-on (FO) videos, and get back angle comparisons, top 3 faults, and drill recommendations — all in under 20 seconds with GPU acceleration.
 
-**Current status:** Phase 3 complete + Modal GPU integration + PropelAuth authentication. Upload videos, get AI-powered swing analysis with side-by-side video comparison against Tiger Woods, phase-by-phase navigation, angle comparison tables, and coaching feedback. GPU-accelerated landmark extraction via Modal runs both videos in parallel on T4 GPUs. Authentication via PropelAuth with Google OAuth and Magic Link sign-in. V1 is iron-only; driver support is planned for a future release.
+**Current status:** Phase 3.5 complete + production deployment live. Upload videos, get AI-powered swing analysis with side-by-side video comparison against Tiger Woods, phase-by-phase navigation, angle comparison tables, and coaching feedback. GPU-accelerated landmark extraction via Modal runs both videos in parallel on T4 GPUs. Authentication via PropelAuth with Google OAuth and Magic Link sign-in — live in both local dev and production (`swingpure.ai`). V1 is iron-only; driver support is planned for a future release.
 
 ---
 
@@ -86,7 +86,7 @@ golf_swing_analyzer/
 │   │   │   ├── Button.tsx                 # Branded button component
 │   │   │   └── results/                   # Results dashboard components
 │   │   │       ├── ResultsDashboard.tsx   # Main orchestrator (state, layout)
-│   │   │       ├── VideoComparison.tsx    # Side-by-side video player with phase seeking
+│   │   │       ├── VideoComparison.tsx    # Side-by-side video player with phase seeking (all views preloaded)
 │   │   │       ├── PhaseTimeline.tsx      # Horizontal 4-phase navigator
 │   │   │       ├── ViewToggle.tsx         # DTL/FO segmented control
 │   │   │       ├── AngleComparisonTable.tsx # Angle comparison table (collapsible)
@@ -518,6 +518,7 @@ python scripts/build_reference_json.py
 - **Velocity-based phase detection** — more robust than Y-position thresholds; anchors on peak downswing speed (the most reliable signal in any swing video) and works backwards/forwards from there
 - **Visibility-weighted signal filtering** — MediaPipe landmark visibility below 0.4 treated as NaN to prevent tracking artifacts from corrupting phase detection, especially at video boundaries and during fast motion
 - **Video readiness tracking in React** — `loadeddata` event listeners ensure video seeking works even when metadata hasn't loaded yet; pending seeks are queued and executed once the video is ready
+- **Preloaded video views** — all 4 videos (user DTL, user FO, ref DTL, ref FO) are rendered simultaneously with `preload="auto"` and toggled via CSS visibility; switching between DTL and Face On is instant after initial load
 - **Modal GPU acceleration** — landmark extraction offloaded to Modal T4 GPUs, with both DTL and FO videos processed in parallel via `.spawn()` / `.get()`. Reduces extraction from ~50s (sequential CPU) to ~5-8s (parallel GPU). Automatic fallback to local CPU if Modal is unavailable.
 - **Video downscaling for inference** — frames downscaled to 960px height before MediaPipe inference on Modal; normalized landmark coordinates remain resolution-independent, with pixel positions mapped back to original dimensions
 - **Lazy Modal import** — `modal` package only imported when `USE_MODAL=true`, so the backend works without Modal installed when running locally
@@ -601,6 +602,13 @@ python scripts/build_reference_json.py
   - Frontend: `NEXT_PUBLIC_AUTH_URL`, `PROPELAUTH_API_KEY`, `PROPELAUTH_VERIFIER_KEY`, `PROPELAUTH_REDIRECT_URI`
   - Backend: `PROPELAUTH_AUTH_URL`, `PROPELAUTH_API_KEY`
   - Graceful fallback when PropelAuth is not configured (returns 401)
+- **Production deployment:**
+  - Frontend live at `swingpure.ai` (Vercel) with production PropelAuth (`auth.swingpure.ai`)
+  - Backend live at `golfswinganalyzer-production.up.railway.app` (Railway)
+  - Google OAuth and Magic Link sign-in verified in production
+- **UX improvements:**
+  - Removed redundant "Analyze Your Swing" button from header nav
+  - Preloaded all video views for instant DTL/Face On switching
 
 ### Phase 4 (next)
 

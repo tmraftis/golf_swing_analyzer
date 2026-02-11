@@ -10,6 +10,9 @@ import type {
 import { SWING_PHASES, PHASE_LABELS } from "@/types";
 import { getVideoUrl } from "@/lib/api";
 
+type ViewKey = "dtl" | "fo";
+const VIEWS: ViewKey[] = ["dtl", "fo"];
+
 interface VideoComparisonProps {
   videoUrls: VideoUrls;
   referenceVideoUrls: VideoUrls;
@@ -29,23 +32,30 @@ export default function VideoComparison({
   activePhase,
   onPhaseChange,
 }: VideoComparisonProps) {
-  const userVideoRef = useRef<HTMLVideoElement>(null);
-  const refVideoRef = useRef<HTMLVideoElement>(null);
+  // Refs for all 4 videos: user-dtl, user-fo, ref-dtl, ref-fo
+  const userVideoRefs = useRef<Record<ViewKey, HTMLVideoElement | null>>({
+    dtl: null,
+    fo: null,
+  });
+  const refVideoRefs = useRef<Record<ViewKey, HTMLVideoElement | null>>({
+    dtl: null,
+    fo: null,
+  });
+
   const [isPlaying, setIsPlaying] = useState(false);
   const [userTime, setUserTime] = useState(0);
   const [userDuration, setUserDuration] = useState(0);
-  const [userVideoReady, setUserVideoReady] = useState(false);
-  const [refVideoReady, setRefVideoReady] = useState(false);
   const pendingPhaseRef = useRef<SwingPhase>(activePhase);
 
-  const userSrc = getVideoUrl(videoUrls[activeView]);
-  const refSrc = getVideoUrl(referenceVideoUrls[activeView]);
-
-  // Reset readiness when video sources change (view toggle)
-  useEffect(() => {
-    setUserVideoReady(false);
-    setRefVideoReady(false);
-  }, [userSrc, refSrc]);
+  // Helper to get the active video elements
+  const getActiveUserVideo = useCallback(
+    () => userVideoRefs.current[activeView as ViewKey],
+    [activeView]
+  );
+  const getActiveRefVideo = useCallback(
+    () => refVideoRefs.current[activeView as ViewKey],
+    [activeView]
+  );
 
   // Seek a single video, waiting for it to be ready if needed
   const seekVideo = useCallback(
@@ -63,24 +73,26 @@ export default function VideoComparison({
     []
   );
 
-  // Seek both videos to a specific phase (internal — does not update parent state)
+  // Seek both active videos to a specific phase
   const seekVideosToPhase = useCallback(
     (phase: SwingPhase) => {
+      const userVideo = getActiveUserVideo();
+      const refVideo = getActiveRefVideo();
       const userPhaseData = userAngles[activeView]?.[phase];
       const refPhaseData = referenceAngles[activeView]?.[phase];
 
-      if (userVideoRef.current && userPhaseData) {
-        seekVideo(userVideoRef.current, userPhaseData.timestamp_sec);
+      if (userVideo && userPhaseData) {
+        seekVideo(userVideo, userPhaseData.timestamp_sec);
       }
-      if (refVideoRef.current && refPhaseData) {
-        seekVideo(refVideoRef.current, refPhaseData.timestamp_sec);
+      if (refVideo && refPhaseData) {
+        seekVideo(refVideo, refPhaseData.timestamp_sec);
       }
 
       setIsPlaying(false);
-      userVideoRef.current?.pause();
-      refVideoRef.current?.pause();
+      userVideo?.pause();
+      refVideo?.pause();
     },
-    [activeView, userAngles, referenceAngles, seekVideo]
+    [activeView, userAngles, referenceAngles, seekVideo, getActiveUserVideo, getActiveRefVideo]
   );
 
   // Called by internal phase buttons — updates parent + seeks
@@ -94,43 +106,60 @@ export default function VideoComparison({
 
   // Sync play/pause
   const togglePlay = useCallback(() => {
+    const userVideo = getActiveUserVideo();
+    const refVideo = getActiveRefVideo();
     if (isPlaying) {
-      userVideoRef.current?.pause();
-      refVideoRef.current?.pause();
+      userVideo?.pause();
+      refVideo?.pause();
       setIsPlaying(false);
     } else {
-      userVideoRef.current?.play();
-      refVideoRef.current?.play();
+      userVideo?.play();
+      refVideo?.play();
       setIsPlaying(true);
     }
-  }, [isPlaying]);
+  }, [isPlaying, getActiveUserVideo, getActiveRefVideo]);
 
-  // Track the desired phase and seek when it changes
+  // When active view or phase changes, pause inactive videos and seek active ones
   useEffect(() => {
     pendingPhaseRef.current = activePhase;
+
+    // Pause all videos when switching views
+    for (const v of VIEWS) {
+      if (v !== activeView) {
+        userVideoRefs.current[v]?.pause();
+        refVideoRefs.current[v]?.pause();
+      }
+    }
+    setIsPlaying(false);
+
     seekVideosToPhase(activePhase);
   }, [activeView, activePhase, seekVideosToPhase]);
 
-  // When a video becomes ready, execute any pending seek
-  useEffect(() => {
-    if (userVideoReady || refVideoReady) {
-      seekVideosToPhase(pendingPhaseRef.current);
-    }
-  }, [userVideoReady, refVideoReady, seekVideosToPhase]);
-
   // Track user video time for progress bar
   const handleTimeUpdate = useCallback(() => {
-    if (userVideoRef.current) {
-      setUserTime(userVideoRef.current.currentTime);
+    const userVideo = getActiveUserVideo();
+    if (userVideo) {
+      setUserTime(userVideo.currentTime);
     }
-  }, []);
+  }, [getActiveUserVideo]);
 
-  const handleLoadedMetadata = useCallback(() => {
-    if (userVideoRef.current) {
-      setUserDuration(userVideoRef.current.duration);
-      setUserVideoReady(true);
+  const handleLoadedMetadata = useCallback(
+    (view: ViewKey) => {
+      const video = userVideoRefs.current[view];
+      if (video && view === activeView) {
+        setUserDuration(video.duration);
+      }
+    },
+    [activeView]
+  );
+
+  // Update duration when switching views (active video may already be loaded)
+  useEffect(() => {
+    const video = userVideoRefs.current[activeView as ViewKey];
+    if (video && video.readyState >= 1) {
+      setUserDuration(video.duration);
     }
-  }, []);
+  }, [activeView]);
 
   // When both videos end, reset playing state
   const handleEnded = useCallback(() => {
@@ -156,18 +185,23 @@ export default function VideoComparison({
           <h3 className="text-sm font-medium text-cream/50 mb-2">
             Your Swing
           </h3>
-          <div className="rounded-xl overflow-hidden bg-black/30 aspect-video">
-            <video
-              ref={userVideoRef}
-              src={userSrc}
-              className="w-full h-full object-contain"
-              muted
-              playsInline
-              preload="auto"
-              onTimeUpdate={handleTimeUpdate}
-              onLoadedMetadata={handleLoadedMetadata}
-              onEnded={handleEnded}
-            />
+          <div className="rounded-xl overflow-hidden bg-black/30 aspect-video relative">
+            {VIEWS.map((view) => (
+              <video
+                key={`user-${view}`}
+                ref={(el) => { userVideoRefs.current[view] = el; }}
+                src={getVideoUrl(videoUrls[view])}
+                className={`w-full h-full object-contain absolute inset-0 ${
+                  view === activeView ? "visible" : "invisible"
+                }`}
+                muted
+                playsInline
+                preload="auto"
+                onTimeUpdate={view === activeView ? handleTimeUpdate : undefined}
+                onLoadedMetadata={() => handleLoadedMetadata(view)}
+                onEnded={handleEnded}
+              />
+            ))}
           </div>
         </div>
 
@@ -176,17 +210,21 @@ export default function VideoComparison({
           <h3 className="text-sm font-medium text-cream/50 mb-2">
             Tiger Woods 2000
           </h3>
-          <div className="rounded-xl overflow-hidden bg-black/30 aspect-video">
-            <video
-              ref={refVideoRef}
-              src={refSrc}
-              className="w-full h-full object-contain"
-              muted
-              playsInline
-              preload="auto"
-              onLoadedMetadata={() => setRefVideoReady(true)}
-              onEnded={handleEnded}
-            />
+          <div className="rounded-xl overflow-hidden bg-black/30 aspect-video relative">
+            {VIEWS.map((view) => (
+              <video
+                key={`ref-${view}`}
+                ref={(el) => { refVideoRefs.current[view] = el; }}
+                src={getVideoUrl(referenceVideoUrls[view])}
+                className={`w-full h-full object-contain absolute inset-0 ${
+                  view === activeView ? "visible" : "invisible"
+                }`}
+                muted
+                playsInline
+                preload="auto"
+                onEnded={handleEnded}
+              />
+            ))}
           </div>
         </div>
       </div>
