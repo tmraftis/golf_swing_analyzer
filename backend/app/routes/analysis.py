@@ -6,8 +6,9 @@ import logging
 import os
 from functools import partial
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 
+from app.auth import require_user
 from app.config import settings
 from app.models.schemas import AnalyzeRequest, AnalysisResponse
 from app.pipeline import run_analysis
@@ -19,12 +20,18 @@ router = APIRouter()
 
 
 @router.post("/analyze/{upload_id}", response_model=AnalysisResponse)
-async def analyze_swing(upload_id: str, request: AnalyzeRequest):
+async def analyze_swing(
+    upload_id: str,
+    request: AnalyzeRequest,
+    current_user=Depends(require_user),
+):
     """Run the full analysis pipeline on previously uploaded videos.
 
     This is a synchronous endpoint that runs the pipeline in a thread pool
     to avoid blocking the event loop. Processing takes ~30-50 seconds.
     """
+    logger.info(f"Analysis requested for {upload_id} by user {current_user.user_id}")
+
     # Validate swing type
     if request.swing_type not in settings.allowed_swing_types:
         raise HTTPException(
@@ -91,8 +98,10 @@ def _ensure_video_urls(result: dict, upload_id: str) -> dict:
 
 
 @router.get("/analysis/{upload_id}", response_model=AnalysisResponse)
-async def get_analysis(upload_id: str):
+async def get_analysis(upload_id: str, current_user=Depends(require_user)):
     """Retrieve a previously computed analysis result."""
+    logger.info(f"Analysis retrieval for {upload_id} by user {current_user.user_id}")
+
     result = get_result(upload_id)
     if result is None:
         raise HTTPException(

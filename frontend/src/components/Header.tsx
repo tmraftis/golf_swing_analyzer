@@ -3,10 +3,13 @@
 import Link from "next/link";
 import Image from "next/image";
 import { usePathname } from "next/navigation";
+import { useUser, useLogoutFunction } from "@propelauth/nextjs/client";
 
 export default function Header() {
   const pathname = usePathname();
   const isUploadPage = pathname === "/upload";
+  const { loading, user } = useUser();
+  const logout = useLogoutFunction();
 
   return (
     <header className="fixed top-0 left-0 right-0 z-50 bg-blue-charcoal/90 backdrop-blur-md border-b border-cream/10">
@@ -23,14 +26,45 @@ export default function Header() {
             PURE
           </span>
         </Link>
-        {!isUploadPage && (
-          <Link
-            href="/upload"
-            className="bg-cardinal-red text-cream px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-cardinal-red/90 transition-colors"
-          >
-            Analyze Your Swing
-          </Link>
-        )}
+
+        <div className="flex items-center gap-4">
+          {!loading && user ? (
+            <>
+              {!isUploadPage && (
+                <Link
+                  href="/upload"
+                  className="bg-cardinal-red text-cream px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-cardinal-red/90 transition-colors"
+                >
+                  Analyze Your Swing
+                </Link>
+              )}
+              <span className="text-cream/60 text-sm hidden sm:inline">
+                {user.email}
+              </span>
+              <button
+                onClick={() => logout()}
+                className="text-cream/50 hover:text-cream text-sm font-medium transition-colors cursor-pointer"
+              >
+                Sign Out
+              </button>
+            </>
+          ) : !loading ? (
+            <>
+              <Link
+                href="/api/auth/login"
+                className="text-cream/70 hover:text-cream text-sm font-medium transition-colors"
+              >
+                Sign In
+              </Link>
+              <Link
+                href="/api/auth/signup"
+                className="bg-cardinal-red text-cream px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-cardinal-red/90 transition-colors"
+              >
+                Get Started
+              </Link>
+            </>
+          ) : null}
+        </div>
       </div>
     </header>
   );

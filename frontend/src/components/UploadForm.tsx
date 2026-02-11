@@ -2,6 +2,7 @@
 
 import { useReducer } from "react";
 import { useRouter } from "next/navigation";
+import { useUser } from "@propelauth/nextjs/client";
 import type { SwingType, VideoFile, UploadResponse } from "@/types";
 import SwingTypeSelector from "./SwingTypeSelector";
 import VideoDropZone from "./VideoDropZone";
@@ -97,6 +98,7 @@ function reducer(state: UploadState, action: UploadAction): UploadState {
 export default function UploadForm() {
   const [state, dispatch] = useReducer(reducer, initialState);
   const router = useRouter();
+  const { accessToken } = useUser();
 
   const canSubmit =
     state.swingType === "iron" &&
@@ -115,7 +117,8 @@ export default function UploadForm() {
       uploadResult = await uploadVideos(
         state.swingType,
         state.dtlFile.file,
-        state.foFile.file
+        state.foFile.file,
+        accessToken || undefined
       );
       dispatch({ type: "UPLOAD_SUCCESS", payload: uploadResult });
     } catch (err) {
@@ -130,7 +133,7 @@ export default function UploadForm() {
     if (uploadResult.upload_id) {
       dispatch({ type: "ANALYSIS_START" });
       try {
-        await analyzeSwing(uploadResult.upload_id, state.swingType);
+        await analyzeSwing(uploadResult.upload_id, state.swingType, accessToken || undefined);
         router.push(`/results/${uploadResult.upload_id}`);
       } catch (err) {
         dispatch({

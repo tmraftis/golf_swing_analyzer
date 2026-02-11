@@ -1,6 +1,11 @@
+"use client";
+
 import Link from "next/link";
+import { useUser } from "@propelauth/nextjs/client";
 
 export default function HeroSection() {
+  const { loading, user } = useUser();
+
   return (
     <section className="relative min-h-screen flex items-center justify-center px-6">
       <div className="absolute inset-0 bg-gradient-to-b from-blue-charcoal via-blue-charcoal to-blue-charcoal/95" />
@@ -13,12 +18,14 @@ export default function HeroSection() {
           Compare your swing to Tiger Woods&apos; iconic 2000 form. See exactly
           where to improve with AI-powered analysis.
         </p>
-        <Link
-          href="/upload"
-          className="inline-block bg-cardinal-red text-cream px-8 py-4 rounded-lg text-lg font-semibold hover:bg-cardinal-red/90 transition-colors"
-        >
-          Start Your Analysis
-        </Link>
+        {!loading && (
+          <Link
+            href={user ? "/upload" : "/api/auth/signup"}
+            className="inline-block bg-cardinal-red text-cream px-8 py-4 rounded-lg text-lg font-semibold hover:bg-cardinal-red/90 transition-colors"
+          >
+            {user ? "Start Your Analysis" : "Get Started"}
+          </Link>
+        )}
       </div>
     </section>
   );

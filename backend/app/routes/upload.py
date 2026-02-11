@@ -1,11 +1,14 @@
+import logging
 import uuid
 
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 
+from app.auth import require_user
 from app.config import settings
 from app.models.schemas import FileInfo, UploadResponse
 from app.storage.local import save_upload
 
+logger = logging.getLogger(__name__)
 router = APIRouter()
 
 
@@ -24,6 +27,7 @@ async def upload_videos(
     swing_type: str = Form(...),
     video_dtl: UploadFile = File(...),
     video_fo: UploadFile = File(...),
+    current_user=Depends(require_user),
 ):
     # Validate swing type
     if swing_type not in settings.allowed_swing_types:
@@ -38,6 +42,8 @@ async def upload_videos(
 
     # Generate upload ID and save
     upload_id = str(uuid.uuid4())
+    logger.info(f"Upload {upload_id} by user {current_user.user_id}")
+
     dtl_filename, dtl_size = await save_upload(upload_id, "dtl", video_dtl)
     fo_filename, fo_size = await save_upload(upload_id, "fo", video_fo)
 

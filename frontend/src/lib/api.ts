@@ -1,10 +1,19 @@
 import { API_URL } from "./constants";
 import type { SwingType, UploadResponse, AnalysisResponse } from "@/types";
 
+function authHeaders(accessToken?: string): Record<string, string> {
+  const headers: Record<string, string> = {};
+  if (accessToken) {
+    headers["Authorization"] = `Bearer ${accessToken}`;
+  }
+  return headers;
+}
+
 export async function uploadVideos(
   swingType: SwingType,
   dtlFile: File,
-  foFile: File
+  foFile: File,
+  accessToken?: string
 ): Promise<UploadResponse> {
   const formData = new FormData();
   formData.append("swing_type", swingType);
@@ -13,6 +22,7 @@ export async function uploadVideos(
 
   const res = await fetch(`${API_URL}/api/upload`, {
     method: "POST",
+    headers: authHeaders(accessToken),
     body: formData,
   });
 
@@ -27,11 +37,15 @@ export async function uploadVideos(
 
 export async function analyzeSwing(
   uploadId: string,
-  swingType: SwingType = "iron"
+  swingType: SwingType = "iron",
+  accessToken?: string
 ): Promise<AnalysisResponse> {
   const res = await fetch(`${API_URL}/api/analyze/${uploadId}`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(accessToken),
+    },
     body: JSON.stringify({ swing_type: swingType }),
   });
 
@@ -44,9 +58,12 @@ export async function analyzeSwing(
 }
 
 export async function getAnalysis(
-  uploadId: string
+  uploadId: string,
+  accessToken?: string
 ): Promise<AnalysisResponse> {
-  const res = await fetch(`${API_URL}/api/analysis/${uploadId}`);
+  const res = await fetch(`${API_URL}/api/analysis/${uploadId}`, {
+    headers: authHeaders(accessToken),
+  });
 
   if (!res.ok) {
     const data = await res.json().catch(() => ({ detail: "Not found" }));

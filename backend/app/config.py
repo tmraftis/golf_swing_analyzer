@@ -34,6 +34,10 @@ class Settings(BaseSettings):
     use_modal: bool = False  # Enable Modal for landmark extraction
     modal_target_height: int = 960  # Downscale frames before inference
 
+    # PropelAuth settings
+    propelauth_auth_url: str = ""
+    propelauth_api_key: str = ""
+
     model_config = {"env_file": ".env", "protected_namespaces": ("settings_",)}
 
 

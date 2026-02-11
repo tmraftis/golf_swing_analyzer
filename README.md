@@ -4,13 +4,14 @@
 
 Compare your golf swing to Tiger Woods' iconic 2000 iron swing using computer vision. Upload down-the-line (DTL) and face-on (FO) videos, and get back angle comparisons, top 3 faults, and drill recommendations — all in under 20 seconds with GPU acceleration.
 
-**Current status:** Phase 3 complete + Modal GPU integration. Upload videos, get AI-powered swing analysis with side-by-side video comparison against Tiger Woods, phase-by-phase navigation, angle comparison tables, and coaching feedback. GPU-accelerated landmark extraction via Modal runs both videos in parallel on T4 GPUs. V1 is iron-only; driver support is planned for a future release.
+**Current status:** Phase 3 complete + Modal GPU integration + PropelAuth authentication. Upload videos, get AI-powered swing analysis with side-by-side video comparison against Tiger Woods, phase-by-phase navigation, angle comparison tables, and coaching feedback. GPU-accelerated landmark extraction via Modal runs both videos in parallel on T4 GPUs. Authentication via PropelAuth with Google OAuth and Magic Link sign-in. V1 is iron-only; driver support is planned for a future release.
 
 ---
 
 ## How It Works
 
-1. **Upload two videos** — Down-the-line (DTL) and face-on (FO) angles of your swing
+1. **Sign in** — Google OAuth or Magic Link via PropelAuth
+2. **Upload two videos** — Down-the-line (DTL) and face-on (FO) angles of your swing
 2. **Extract landmarks** — MediaPipe Pose Landmarker (heavy model, 33 landmarks) processes every 2nd frame
 3. **Detect phases** — Algorithm auto-detects address, top of backswing, impact, and follow-through from wrist trajectory
 4. **Calculate angles** — Golf-specific angles computed at each phase (shoulder turn, hip rotation, spine tilt, X-factor, wrist cock, knee flex, etc.)
@@ -61,23 +62,27 @@ golf_swing_analyzer/
 │
 ├── frontend/                              # Next.js app (deploys to Vercel)
 │   ├── src/
+│   │   ├── middleware.ts                  # PropelAuth auth middleware
 │   │   ├── app/
-│   │   │   ├── layout.tsx                 # Root layout: Inter font, dark bg
-│   │   │   ├── page.tsx                   # Landing page
+│   │   │   ├── layout.tsx                 # Root layout: Inter font, dark bg, AuthProvider
+│   │   │   ├── page.tsx                   # Landing page (public)
 │   │   │   ├── globals.css                # Tailwind + Pure design tokens
+│   │   │   ├── api/auth/[slug]/
+│   │   │   │   └── route.ts              # PropelAuth route handler (login/callback/logout)
 │   │   │   ├── upload/
-│   │   │   │   └── page.tsx               # Upload page
+│   │   │   │   └── page.tsx               # Upload page (auth required)
 │   │   │   └── results/
 │   │   │       └── [uploadId]/
-│   │   │           └── page.tsx           # Results dashboard page
+│   │   │           ├── page.tsx           # Results page (auth required)
+│   │   │           └── ResultsPageClient.tsx # Client-side results fetcher
 │   │   ├── components/
-│   │   │   ├── Header.tsx                 # Nav bar: logo, brand name, CTA
+│   │   │   ├── Header.tsx                 # Nav bar: logo, auth state, sign in/out
 │   │   │   ├── Footer.tsx                 # Minimal footer
-│   │   │   ├── HeroSection.tsx            # Landing hero: tagline + CTA
+│   │   │   ├── HeroSection.tsx            # Landing hero: tagline + auth-aware CTA
 │   │   │   ├── FeatureCards.tsx            # 3 value proposition cards
 │   │   │   ├── SwingTypeSelector.tsx       # Iron (active) / Driver ("Coming Soon")
 │   │   │   ├── VideoDropZone.tsx           # Drag-and-drop upload area
-│   │   │   ├── UploadForm.tsx             # Upload → analyze → redirect to results
+│   │   │   ├── UploadForm.tsx             # Upload → analyze → redirect (sends auth token)
 │   │   │   ├── Button.tsx                 # Branded button component
 │   │   │   └── results/                   # Results dashboard components
 │   │   │       ├── ResultsDashboard.tsx   # Main orchestrator (state, layout)
@@ -89,14 +94,14 @@ golf_swing_analyzer/
 │   │   │       ├── LoadingSkeleton.tsx    # Loading placeholder
 │   │   │       └── ErrorState.tsx         # Error display
 │   │   ├── lib/
-│   │   │   ├── api.ts                     # API client (upload, analyze, getAnalysis, getVideoUrl)
+│   │   │   ├── api.ts                     # API client with auth token support
 │   │   │   ├── validation.ts              # File type, size, duration checks
 │   │   │   └── constants.ts               # Brand values, limits, accepted types
 │   │   └── types/
 │   │       └── index.ts                   # TypeScript interfaces (angles, phases, videos)
 │   ├── public/
 │   │   └── pure-logo.jpeg                 # Logo for frontend
-│   ├── .env.local                         # NEXT_PUBLIC_API_URL
+│   ├── .env.local                         # API URL + PropelAuth credentials
 │   └── package.json
 │
 ├── modal_app/                             # Modal GPU worker (deploys to Modal)
@@ -106,11 +111,12 @@ golf_swing_analyzer/
 ├── backend/                               # FastAPI app (deploys to Railway)
 │   ├── main.py                            # App entry, CORS, lifespan, routers
 │   ├── app/
-│   │   ├── config.py                      # Settings (upload, pipeline, Modal, origins)
+│   │   ├── config.py                      # Settings (upload, pipeline, Modal, PropelAuth)
+│   │   ├── auth.py                        # PropelAuth init + require_user dependency
 │   │   ├── routes/
-│   │   │   ├── upload.py                  # POST /api/upload
-│   │   │   ├── analysis.py               # POST /api/analyze, GET /api/analysis
-│   │   │   └── video.py                  # Video serving with HTTP range requests
+│   │   │   ├── upload.py                  # POST /api/upload (auth required)
+│   │   │   ├── analysis.py               # POST /api/analyze, GET /api/analysis (auth required)
+│   │   │   └── video.py                  # Video serving with HTTP range requests (public)
 │   │   ├── models/
 │   │   │   └── schemas.py                 # Pydantic models (upload + analysis)
 │   │   ├── storage/
@@ -166,6 +172,7 @@ golf_swing_analyzer/
 - **Node.js 18+** and npm
 - **Python 3.10+** with pip
 - **MediaPipe model** (~30MB, see below)
+- **PropelAuth account** with a project configured (see step 2.5 below)
 
 ### 1. Download the MediaPipe model
 
@@ -183,6 +190,27 @@ modal deploy modal_app/landmark_worker.py
 ```
 
 Then set `USE_MODAL=true` in `backend/.env`. Without Modal, landmark extraction runs locally on CPU (~50s). With Modal, both videos are processed in parallel on T4 GPUs (~10-15s).
+
+### 2.5. Set up PropelAuth
+
+1. Create a project at [auth.propelauth.com](https://auth.propelauth.com)
+2. In **Frontend Integration**, set Application URL to `http://localhost:3000` and default redirect after login to `/api/auth/callback`
+3. Enable **Google OAuth** and/or **Magic Link** under Sign-In Methods
+4. Copy your **Auth URL**, **API Key**, and **Verifier Key** from Backend Integration
+
+**Frontend** — add to `frontend/.env.local`:
+```env
+NEXT_PUBLIC_AUTH_URL=https://<your-id>.propelauthtest.com
+PROPELAUTH_API_KEY=<your-api-key>
+PROPELAUTH_VERIFIER_KEY="-----BEGIN PUBLIC KEY-----\n...\n-----END PUBLIC KEY-----"
+PROPELAUTH_REDIRECT_URI=http://localhost:3000/api/auth/callback
+```
+
+**Backend** — add to `backend/.env`:
+```env
+PROPELAUTH_AUTH_URL=https://<your-id>.propelauthtest.com
+PROPELAUTH_API_KEY=<your-api-key>
+```
 
 ### 3. Run the backend
 
@@ -208,11 +236,13 @@ Set `NEXT_PUBLIC_API_URL=http://localhost:8000` in `frontend/.env.local` (alread
 
 ### 5. Analyze a swing
 
-1. Go to `http://localhost:3000/upload`
-2. Select "Iron" as the swing type
-3. Upload a down-the-line (DTL) and face-on (FO) video of your swing
-4. Click "Submit for Analysis" — takes ~10-15s with Modal, ~50s without
-5. View your results dashboard: side-by-side video comparison against Tiger, phase-by-phase navigation, angle comparisons, and coaching tips
+1. Go to `http://localhost:3000`
+2. Click "Get Started" to sign up via Google or Magic Link
+3. After signing in, you'll land on the upload page
+4. Select "Iron" as the swing type
+5. Upload a down-the-line (DTL) and face-on (FO) video of your swing
+6. Click "Submit for Analysis" — takes ~10-15s with Modal, ~50s without
+7. View your results dashboard: side-by-side video comparison against Tiger, phase-by-phase navigation, angle comparisons, and coaching tips
 
 ---
 
@@ -226,7 +256,7 @@ Set `NEXT_PUBLIC_API_URL=http://localhost:8000` in `frontend/.env.local` (alread
 | Pose estimation | MediaPipe Pose Landmarker (heavy, 33 landmarks) | Modal GPU or local CPU |
 | Analysis pipeline | Custom Python (landmark extraction, phase detection, angle math, comparison, feedback) | Backend |
 | Storage | Local filesystem (v1), cloud bucket planned | — |
-| Auth | Google OAuth (deferred, not yet implemented) | — |
+| Auth | PropelAuth (Google OAuth + Magic Link) | PropelAuth hosted |
 
 ---
 
@@ -262,9 +292,9 @@ Health check. Returns server status and whether the MediaPipe model is available
 { "status": "ok", "version": "0.2.0", "model_available": true }
 ```
 
-### `POST /api/upload`
+### `POST /api/upload` *(auth required)*
 
-Upload two swing videos for analysis.
+Upload two swing videos for analysis. Requires `Authorization: Bearer <token>` header.
 
 **Request:** `multipart/form-data`
 
@@ -288,11 +318,11 @@ Upload two swing videos for analysis.
 }
 ```
 
-**Errors:** `400` for invalid swing type or file type.
+**Errors:** `400` for invalid swing type or file type, `401` for missing/invalid auth token.
 
-### `POST /api/analyze/{upload_id}`
+### `POST /api/analyze/{upload_id}` *(auth required)*
 
-Run the full analysis pipeline on previously uploaded videos. Processing takes ~10-15s with Modal GPU, ~50s with local CPU.
+Run the full analysis pipeline on previously uploaded videos. Processing takes ~10-15s with Modal GPU, ~50s with local CPU. Requires `Authorization: Bearer <token>` header.
 
 **Request body:**
 ```json
@@ -344,13 +374,13 @@ Run the full analysis pipeline on previously uploaded videos. Processing takes ~
 
 **Errors:** `404` (upload not found), `422` (pipeline failure), `500` (unexpected error).
 
-### `GET /api/analysis/{upload_id}`
+### `GET /api/analysis/{upload_id}` *(auth required)*
 
-Retrieve a previously computed analysis result from cache.
+Retrieve a previously computed analysis result from cache. Requires `Authorization: Bearer <token>` header.
 
 **Success (200):** Same schema as `POST /api/analyze`.
 
-**Errors:** `404` if not yet analyzed.
+**Errors:** `401` for missing/invalid auth token, `404` if not yet analyzed.
 
 ---
 
@@ -478,7 +508,7 @@ python scripts/build_reference_json.py
 - **Reference data organized by club** — `reference_data/iron/`, with `reference_data/driver/` reserved
 - **Right-handed golfer assumed** — lead arm = left, trail arm = right
 - **Frontend and backend independently deployable** — Next.js on Vercel, FastAPI on Railway
-- **Auth deferred** — upload flow built first, Google OAuth to be added later
+- **PropelAuth for authentication** — hosted auth service handles login UI, token issuance, and user management; frontend uses `@propelauth/nextjs` with `AuthProvider` and `useUser()` hook; backend validates JWT tokens via `propelauth-fastapi` with `Depends(require_user)` on protected endpoints; supports Google OAuth and Magic Link sign-in
 - **Local filesystem storage for v1** — will move to cloud bucket with 24-hour auto-delete
 - **Client-side validation before upload** — reduces backend load and gives instant feedback
 - **Tailwind CSS v4 with `@theme` tokens** — design system colors defined as CSS custom properties, no `tailwind.config.ts`
@@ -502,6 +532,7 @@ python scripts/build_reference_json.py
 | **1** | Landing page, upload UI, FastAPI backend skeleton | Done |
 | **2** | Analysis pipeline, comparison engine, coaching feedback, results UI | Done |
 | **3** | Results dashboard: side-by-side video comparison, phase navigation, angle table | Done |
+| **3.5** | Authentication: PropelAuth (Google OAuth + Magic Link), protected routes and API endpoints | Done |
 | **4** | Skeleton overlays, drill content curation, onboarding, polish, QA | Not started |
 | **5+** | Driver swing support, additional clubs, more pro references | Future |
 
@@ -552,6 +583,24 @@ python scripts/build_reference_json.py
   - Follow-through detection uses midpoint of the first settled period after impact
   - Handles videos with pre-shot routines, waggles, and long setup periods
 - **Frontend redirect** — upload form redirects to results page after analysis completes
+
+### Phase 3.5 deliverables (completed)
+
+- **PropelAuth integration** for authentication (Google OAuth + Magic Link):
+  - Frontend: `@propelauth/nextjs` with `AuthProvider`, `useUser()`, `useLogoutFunction()`
+  - Backend: `propelauth-fastapi` with `require_user` dependency on all protected endpoints
+  - Auth route handler at `/api/auth/[slug]` (login, signup, callback, logout)
+  - Next.js middleware attaches auth info to all requests
+- **Protected routes:** `/upload` and `/results/[uploadId]` require authentication via `getUserOrRedirect()`
+- **Protected API endpoints:** `POST /api/upload`, `POST /api/analyze`, `GET /api/analysis` require valid Bearer token
+- **Auth-aware UI:**
+  - Header shows Sign In / Get Started when logged out; email + Sign Out when logged in
+  - Hero CTA switches between "Get Started" (→ signup) and "Start Your Analysis" (→ upload)
+  - Landing page remains public
+- **Environment configuration:**
+  - Frontend: `NEXT_PUBLIC_AUTH_URL`, `PROPELAUTH_API_KEY`, `PROPELAUTH_VERIFIER_KEY`, `PROPELAUTH_REDIRECT_URI`
+  - Backend: `PROPELAUTH_AUTH_URL`, `PROPELAUTH_API_KEY`
+  - Graceful fallback when PropelAuth is not configured (returns 401)
 
 ### Phase 4 (next)
 
