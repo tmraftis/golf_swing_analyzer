@@ -4,7 +4,7 @@
 
 Compare your golf swing to Tiger Woods' iconic 2000 iron swing using computer vision. Upload down-the-line (DTL) and face-on (FO) videos, and get back angle comparisons, top 3 faults, and drill recommendations — all in under 20 seconds with GPU acceleration.
 
-**Current status:** Phase 3.5 complete + production deployment live. Upload videos, get AI-powered swing analysis with side-by-side video comparison against Tiger Woods, phase-by-phase navigation, angle comparison tables, and coaching feedback. GPU-accelerated landmark extraction via Modal runs both videos in parallel on T4 GPUs. Authentication via PropelAuth with Google OAuth and Magic Link sign-in — live in both local dev and production (`swingpure.ai`). V1 is iron-only; driver support is planned for a future release.
+**Current status:** Phase 3.5 complete + production deployment live. Upload videos, get AI-powered swing analysis with side-by-side video comparison against Tiger Woods, phase-by-phase navigation, angle comparison tables, and coaching feedback. GPU-accelerated landmark extraction via Modal runs both videos in parallel on T4 GPUs. Server-side video compression (ffmpeg H.264 ~4Mbps) reduces storage by ~73% and speeds up video streaming. Authentication via PropelAuth with Google OAuth and Magic Link sign-in — live in both local dev and production (`swingpure.ai`). V1 is iron-only; driver support is planned for a future release.
 
 ---
 
@@ -22,7 +22,7 @@ Compare your golf swing to Tiger Woods' iconic 2000 iron swing using computer vi
 Upload (.mov/.mp4 × 2)
     │
     ▼
-POST /api/upload  →  Save files, return upload_id
+POST /api/upload  →  Save files, compress (ffmpeg), return upload_id
     │
     ▼
 POST /api/analyze/{upload_id}
@@ -111,7 +111,7 @@ golf_swing_analyzer/
 ├── backend/                               # FastAPI app (deploys to Railway)
 │   ├── main.py                            # App entry, CORS, lifespan, routers
 │   ├── app/
-│   │   ├── config.py                      # Settings (upload, pipeline, Modal, PropelAuth)
+│   │   ├── config.py                      # Settings (upload, pipeline, Modal, PropelAuth, compression)
 │   │   ├── auth.py                        # PropelAuth init + require_user dependency
 │   │   ├── routes/
 │   │   │   ├── upload.py                  # POST /api/upload (auth required)
@@ -119,8 +119,11 @@ golf_swing_analyzer/
 │   │   │   └── video.py                  # Video serving with HTTP range requests (public)
 │   │   ├── models/
 │   │   │   └── schemas.py                 # Pydantic models (upload + analysis)
+│   │   ├── video/
+│   │   │   ├── __init__.py
+│   │   │   └── compress.py                # ffmpeg H.264 compression (orientation-aware)
 │   │   ├── storage/
-│   │   │   ├── local.py                   # Save files to local filesystem
+│   │   │   ├── local.py                   # Save files to local filesystem + compress
 │   │   │   └── analysis_store.py          # In-memory analysis result cache
 │   │   └── pipeline/                      # Swing analysis pipeline
 │   │       ├── __init__.py                # run_analysis() orchestrator
@@ -171,6 +174,7 @@ golf_swing_analyzer/
 
 - **Node.js 18+** and npm
 - **Python 3.10+** with pip
+- **ffmpeg** (for video compression; `brew install ffmpeg` on macOS — optional, uploads work without it)
 - **MediaPipe model** (~30MB, see below)
 - **PropelAuth account** with a project configured (see step 2.5 below)
 
@@ -255,6 +259,7 @@ Set `NEXT_PUBLIC_API_URL=http://localhost:8000` in `frontend/.env.local` (alread
 | GPU worker | Modal (T4 GPU, parallel extraction) | Modal |
 | Pose estimation | MediaPipe Pose Landmarker (heavy, 33 landmarks) | Modal GPU or local CPU |
 | Analysis pipeline | Custom Python (landmark extraction, phase detection, angle math, comparison, feedback) | Backend |
+| Video compression | ffmpeg (H.264, ~4Mbps, orientation-aware) | Backend |
 | Storage | Local filesystem (v1), cloud bucket planned | — |
 | Auth | PropelAuth (Google OAuth + Magic Link) | PropelAuth hosted |
 
@@ -311,8 +316,8 @@ Upload two swing videos for analysis. Requires `Authorization: Bearer <token>` h
   "upload_id": "c524d280-57ec-4944-be20-7269cb66a63a",
   "swing_type": "iron",
   "files": {
-    "dtl": { "filename": "...", "size_bytes": 33461107, "content_type": "video/quicktime" },
-    "fo": { "filename": "...", "size_bytes": 38934444, "content_type": "video/quicktime" }
+    "dtl": { "filename": "..._dtl.mp4", "size_bytes": 8365277, "content_type": "video/quicktime" },
+    "fo": { "filename": "..._fo.mp4", "size_bytes": 9733611, "content_type": "video/quicktime" }
   },
   "message": "Videos uploaded successfully. Call POST /api/analyze/{upload_id} to run analysis."
 }
@@ -522,6 +527,7 @@ python scripts/build_reference_json.py
 - **Modal GPU acceleration** — landmark extraction offloaded to Modal T4 GPUs, with both DTL and FO videos processed in parallel via `.spawn()` / `.get()`. Reduces extraction from ~50s (sequential CPU) to ~5-8s (parallel GPU). Automatic fallback to local CPU if Modal is unavailable.
 - **Video downscaling for inference** — frames downscaled to 960px height before MediaPipe inference on Modal; normalized landmark coordinates remain resolution-independent, with pixel positions mapped back to original dimensions
 - **Lazy Modal import** — `modal` package only imported when `USE_MODAL=true`, so the backend works without Modal installed when running locally
+- **Server-side video compression** — uploaded videos (typically iPhone HEVC .MOV, ~15Mbps, ~35MB each) are compressed to H.264 1080p ~4Mbps via ffmpeg after upload, reducing storage by ~73% (~35MB → ~8MB per file). Orientation-aware scale filter preserves portrait (1080×1920) and landscape (1920×1080) dimensions. `+faststart` moves moov atom for HTTP streaming. Graceful fallback: skips compression if ffmpeg is missing or compression fails. Controllable via `COMPRESS_UPLOADS=false` env var
 
 ---
 
@@ -606,6 +612,13 @@ python scripts/build_reference_json.py
   - Frontend live at `swingpure.ai` (Vercel) with production PropelAuth (`auth.swingpure.ai`)
   - Backend live at `golfswinganalyzer-production.up.railway.app` (Railway)
   - Google OAuth and Magic Link sign-in verified in production
+- **Server-side video compression:**
+  - ffmpeg H.264 compression at ~4Mbps reduces iPhone uploads from ~35MB to ~8MB (~73% reduction)
+  - Orientation-aware scale filter preserves portrait (1080×1920) and landscape (1920×1080) dimensions
+  - `+faststart` moov atom for HTTP streaming compatibility
+  - Graceful fallback: skips compression if ffmpeg is unavailable or compression fails
+  - Controllable via `COMPRESS_UPLOADS` env var (default: `true`)
+  - ffmpeg added to Docker image for production deployment
 - **UX improvements:**
   - Removed redundant "Analyze Your Swing" button from header nav
   - Preloaded all video views for instant DTL/Face On switching
