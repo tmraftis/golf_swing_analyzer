@@ -55,3 +55,7 @@ export async function getAnalysis(
 
   return res.json();
 }
+
+export function getVideoUrl(relativePath: string): string {
+  return `${API_URL}${relativePath}`;
+}

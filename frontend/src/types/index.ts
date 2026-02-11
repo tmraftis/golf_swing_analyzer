@@ -27,7 +27,70 @@ export interface UploadResponse {
   detail?: string;
 }
 
+// --- Swing phases ---
+
+export const SWING_PHASES = [
+  "address",
+  "top",
+  "impact",
+  "follow_through",
+] as const;
+export type SwingPhase = (typeof SWING_PHASES)[number];
+
+export const PHASE_LABELS: Record<SwingPhase, string> = {
+  address: "Address",
+  top: "Top",
+  impact: "Impact",
+  follow_through: "Follow-Through",
+};
+
+export const ANGLE_DISPLAY_NAMES: Record<string, string> = {
+  spine_angle_dtl: "Spine Angle",
+  lead_arm_torso: "Lead Arm-Torso",
+  trail_arm_torso: "Trail Arm-Torso",
+  right_elbow: "Right Elbow",
+  left_elbow: "Left Elbow",
+  right_knee_flex: "Right Knee Flex",
+  left_knee_flex: "Left Knee Flex",
+  right_wrist_cock: "Wrist Cock",
+  shoulder_line_angle: "Shoulder Turn",
+  hip_line_angle: "Hip Rotation",
+  x_factor: "X-Factor",
+  spine_tilt_fo: "Spine Tilt",
+  shoulder_width_apparent: "Shoulder Width",
+  hip_width_apparent: "Hip Width",
+  shoulder_hip_offset_x: "Shoulder-Hip Offset",
+};
+
 // --- Analysis types ---
+
+export interface PhaseAngles {
+  frame: number;
+  timestamp_sec: number;
+  description?: string;
+  angles: Record<string, number>;
+}
+
+export type ViewAngles = Partial<Record<SwingPhase, PhaseAngles>>;
+
+export interface AngleData {
+  dtl: ViewAngles;
+  fo: ViewAngles;
+}
+
+export type ViewDeltas = Partial<Record<SwingPhase, Record<string, number>>>;
+
+export interface DeltaData {
+  dtl: ViewDeltas;
+  fo: ViewDeltas;
+}
+
+export type PhaseFrames = Record<VideoAngle, Partial<Record<SwingPhase, number>>>;
+
+export interface VideoUrls {
+  dtl: string;
+  fo: string;
+}
 
 export interface TopDifference {
   rank: number;
@@ -48,9 +111,11 @@ export interface AnalysisResponse {
   upload_id: string;
   swing_type: string;
   processing_time_sec: number;
-  user_angles: Record<string, unknown>;
-  reference_angles: Record<string, unknown>;
-  deltas: Record<string, unknown>;
+  user_angles: AngleData;
+  reference_angles: AngleData;
+  deltas: DeltaData;
   top_differences: TopDifference[];
-  phase_frames: Record<string, unknown>;
+  phase_frames: PhaseFrames;
+  video_urls?: VideoUrls;
+  reference_video_urls?: VideoUrls;
 }

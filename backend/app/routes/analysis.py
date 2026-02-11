@@ -1,7 +1,9 @@
 """Analysis endpoints: run pipeline and retrieve results."""
 
 import asyncio
+import glob
 import logging
+import os
 from functools import partial
 
 from fastapi import APIRouter, HTTPException
@@ -34,7 +36,7 @@ async def analyze_swing(upload_id: str, request: AnalyzeRequest):
     # Return cached result if available
     if has_result(upload_id):
         logger.info(f"Returning cached result for {upload_id}")
-        return get_result(upload_id)
+        return _ensure_video_urls(get_result(upload_id), upload_id)
 
     # Run pipeline in thread pool (CPU-bound work)
     try:
@@ -65,6 +67,27 @@ async def analyze_swing(upload_id: str, request: AnalyzeRequest):
     return result
 
 
+def _ensure_video_urls(result: dict, upload_id: str) -> dict:
+    """Backfill video URLs if missing from cached results."""
+    if result.get("video_urls") is None:
+        video_urls = {}
+        for view in ("dtl", "fo"):
+            matches = glob.glob(f"{settings.upload_dir}/{upload_id}_{view}.*")
+            if matches:
+                video_urls[view] = f"/uploads/{os.path.basename(matches[0])}"
+        if video_urls:
+            result["video_urls"] = video_urls
+
+    if result.get("reference_video_urls") is None:
+        swing_type = result.get("swing_type", "iron")
+        result["reference_video_urls"] = {
+            "dtl": f"/reference/{swing_type}/tiger_2000_{swing_type}_dtl.mov",
+            "fo": f"/reference/{swing_type}/tiger_2000_{swing_type}_fo.mov",
+        }
+
+    return result
+
+
 @router.get("/analysis/{upload_id}", response_model=AnalysisResponse)
 async def get_analysis(upload_id: str):
     """Retrieve a previously computed analysis result."""
@@ -75,4 +98,5 @@ async def get_analysis(upload_id: str):
             f"No analysis found for upload '{upload_id}'. "
             "Run POST /api/analyze/{upload_id} first.",
         )
+    result = _ensure_video_urls(result, upload_id)
     return result

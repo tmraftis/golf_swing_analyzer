@@ -57,6 +57,21 @@ def detect_swing_phases(landmarks_data: dict, view: str) -> dict:
     # Remove diagnostics from the result (internal use only)
     phases.pop("_diagnostics", None)
 
+    # Snap phase frames to nearest detected frame so that
+    # calculate_angles can always find valid landmark data.
+    detected_frames = {
+        f["frame"] for f in landmarks_data["frames"] if f["detected"]
+    }
+    for phase_name in list(phases.keys()):
+        frame = phases[phase_name]["frame"]
+        if frame not in detected_frames and detected_frames:
+            nearest = min(detected_frames, key=lambda f: abs(f - frame))
+            logger.info(
+                f"{view}: Snapping {phase_name} frame {frame} -> {nearest} "
+                f"(nearest detected)"
+            )
+            phases[phase_name]["frame"] = nearest
+
     # Validate that all phases were found
     for phase_name in ["address", "top", "impact", "follow_through"]:
         if phase_name not in phases:

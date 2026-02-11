@@ -46,3 +46,5 @@ class AnalysisResponse(BaseModel):
     deltas: dict
     top_differences: list[TopDifference]
     phase_frames: dict
+    video_urls: dict[str, str] | None = None
+    reference_video_urls: dict[str, str] | None = None

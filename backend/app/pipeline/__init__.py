@@ -6,6 +6,7 @@ Coordinates: landmark extraction → phase detection → angle calculation
 
 import glob
 import logging
+import os
 import time
 
 from .models import PipelineError, VideoNotFoundError
@@ -114,6 +115,18 @@ def run_analysis(
         "fo": {k: v["frame"] for k, v in fo_phases.items()},
     }
 
+    # Build video URLs for the frontend
+    video_urls = {
+        "dtl": f"/uploads/{os.path.basename(dtl_path)}",
+        "fo": f"/uploads/{os.path.basename(fo_path)}",
+    }
+
+    # Reference video URLs (Tiger)
+    ref_video_urls = {
+        "dtl": f"/reference/{swing_type}/tiger_2000_{swing_type}_dtl.mov",
+        "fo": f"/reference/{swing_type}/tiger_2000_{swing_type}_fo.mov",
+    }
+
     return {
         "status": "success",
         "upload_id": upload_id,
@@ -124,4 +137,6 @@ def run_analysis(
         "deltas": deltas,
         "top_differences": top_differences,
         "phase_frames": phase_frames,
+        "video_urls": video_urls,
+        "reference_video_urls": ref_video_urls,
     }

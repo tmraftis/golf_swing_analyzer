@@ -4,7 +4,7 @@
 
 Compare your golf swing to Tiger Woods' iconic 2000 iron swing using computer vision. Upload down-the-line (DTL) and face-on (FO) videos, and get back angle comparisons, top 3 faults, and drill recommendations — all in under 60 seconds.
 
-**Current status:** Phase 2 complete. Upload videos, get AI-powered swing analysis with coaching feedback. V1 is iron-only; driver support is planned for a future release.
+**Current status:** Phase 3 complete. Upload videos, get AI-powered swing analysis with side-by-side video comparison against Tiger Woods, phase-by-phase navigation, angle comparison tables, and coaching feedback. V1 is iron-only; driver support is planned for a future release.
 
 ---
 
@@ -35,7 +35,13 @@ POST /api/analyze/{upload_id}
     │
     ▼
 Response: user_angles, reference_angles, deltas,
-          top 3 differences with coaching tips
+          top 3 differences with coaching tips,
+          video_urls, reference_video_urls
+    │
+    ▼
+/results/{upload_id}  →  Side-by-side video comparison,
+                          phase navigation, angle table,
+                          coaching feedback cards
 ```
 
 ---
@@ -58,8 +64,11 @@ golf_swing_analyzer/
 │   │   │   ├── layout.tsx                 # Root layout: Inter font, dark bg
 │   │   │   ├── page.tsx                   # Landing page
 │   │   │   ├── globals.css                # Tailwind + Pure design tokens
-│   │   │   └── upload/
-│   │   │       └── page.tsx               # Upload page
+│   │   │   ├── upload/
+│   │   │   │   └── page.tsx               # Upload page
+│   │   │   └── results/
+│   │   │       └── [uploadId]/
+│   │   │           └── page.tsx           # Results dashboard page
 │   │   ├── components/
 │   │   │   ├── Header.tsx                 # Nav bar: logo, brand name, CTA
 │   │   │   ├── Footer.tsx                 # Minimal footer
@@ -67,14 +76,23 @@ golf_swing_analyzer/
 │   │   │   ├── FeatureCards.tsx            # 3 value proposition cards
 │   │   │   ├── SwingTypeSelector.tsx       # Iron (active) / Driver ("Coming Soon")
 │   │   │   ├── VideoDropZone.tsx           # Drag-and-drop upload area
-│   │   │   ├── UploadForm.tsx             # Full upload → analyze → results flow
-│   │   │   └── Button.tsx                 # Branded button component
+│   │   │   ├── UploadForm.tsx             # Upload → analyze → redirect to results
+│   │   │   ├── Button.tsx                 # Branded button component
+│   │   │   └── results/                   # Results dashboard components
+│   │   │       ├── ResultsDashboard.tsx   # Main orchestrator (state, layout)
+│   │   │       ├── VideoComparison.tsx    # Side-by-side video player with phase seeking
+│   │   │       ├── PhaseTimeline.tsx      # Horizontal 4-phase navigator
+│   │   │       ├── ViewToggle.tsx         # DTL/FO segmented control
+│   │   │       ├── AngleComparisonTable.tsx # Angle comparison table (collapsible)
+│   │   │       ├── DifferenceCard.tsx     # Coaching feedback card
+│   │   │       ├── LoadingSkeleton.tsx    # Loading placeholder
+│   │   │       └── ErrorState.tsx         # Error display
 │   │   ├── lib/
-│   │   │   ├── api.ts                     # API client (upload, analyze, getAnalysis)
+│   │   │   ├── api.ts                     # API client (upload, analyze, getAnalysis, getVideoUrl)
 │   │   │   ├── validation.ts              # File type, size, duration checks
 │   │   │   └── constants.ts               # Brand values, limits, accepted types
 │   │   └── types/
-│   │       └── index.ts                   # TypeScript interfaces
+│   │       └── index.ts                   # TypeScript interfaces (angles, phases, videos)
 │   ├── public/
 │   │   └── pure-logo.jpeg                 # Logo for frontend
 │   ├── .env.local                         # NEXT_PUBLIC_API_URL
@@ -86,7 +104,8 @@ golf_swing_analyzer/
 │   │   ├── config.py                      # Settings (upload, pipeline, origins)
 │   │   ├── routes/
 │   │   │   ├── upload.py                  # POST /api/upload
-│   │   │   └── analysis.py               # POST /api/analyze, GET /api/analysis
+│   │   │   ├── analysis.py               # POST /api/analyze, GET /api/analysis
+│   │   │   └── video.py                  # Video serving with HTTP range requests
 │   │   ├── models/
 │   │   │   └── schemas.py                 # Pydantic models (upload + analysis)
 │   │   ├── storage/
@@ -177,7 +196,7 @@ Set `NEXT_PUBLIC_API_URL=http://localhost:8000` in `frontend/.env.local` (alread
 2. Select "Iron" as the swing type
 3. Upload a down-the-line (DTL) and face-on (FO) video of your swing
 4. Click "Submit for Analysis" — the pipeline takes ~30-50 seconds
-5. View your top 3 areas for improvement with coaching tips
+5. View your results dashboard: side-by-side video comparison against Tiger, phase-by-phase navigation, angle comparisons, and coaching tips
 
 ---
 
@@ -447,7 +466,11 @@ python scripts/build_reference_json.py
 - **Client-side validation before upload** — reduces backend load and gives instant feedback
 - **Tailwind CSS v4 with `@theme` tokens** — design system colors defined as CSS custom properties, no `tailwind.config.ts`
 - **`react-dropzone` for file upload UX** — handles drag-and-drop and file selection cleanly
-- **`useReducer` for upload form state** — manages the multi-step flow (upload → analyzing → results) without a global store
+- **`useReducer` for upload form state** — manages the multi-step flow (upload → analyzing → redirect) without a global store
+- **HTTP range requests for video serving** — FastAPI's StaticFiles doesn't support range requests, which browsers need for video seeking; custom streaming endpoint returns `206 Partial Content` with proper `Content-Range` headers
+- **Velocity-based phase detection** — more robust than Y-position thresholds; anchors on peak downswing speed (the most reliable signal in any swing video) and works backwards/forwards from there
+- **Visibility-weighted signal filtering** — MediaPipe landmark visibility below 0.4 treated as NaN to prevent tracking artifacts from corrupting phase detection, especially at video boundaries and during fast motion
+- **Video readiness tracking in React** — `loadeddata` event listeners ensure video seeking works even when metadata hasn't loaded yet; pending seeks are queued and executed once the video is ready
 
 ---
 
@@ -458,8 +481,8 @@ python scripts/build_reference_json.py
 | **0** | Tiger reference data & pipeline validation | Done |
 | **1** | Landing page, upload UI, FastAPI backend skeleton | Done |
 | **2** | Analysis pipeline, comparison engine, coaching feedback, results UI | Done |
-| **3** | Results UI enhancements, side-by-side video player with skeleton overlays, angle table | Not started |
-| **4** | Drill content curation, onboarding, polish, QA | Not started |
+| **3** | Results dashboard: side-by-side video comparison, phase navigation, angle table | Done |
+| **4** | Skeleton overlays, drill content curation, onboarding, polish, QA | Not started |
 | **5+** | Driver swing support, additional clubs, more pro references | Future |
 
 ### Phase 1 deliverables (completed)
@@ -491,12 +514,31 @@ python scripts/build_reference_json.py
   - "Analyze Another Swing" reset flow
 - **Performance:** ~50 seconds end-to-end (within 60s target)
 
-### Phase 3 (next)
+### Phase 3 deliverables (completed)
 
-- Side-by-side video player with skeleton overlays at key phases
-- Detailed angle comparison table
-- Visual indicators on the body showing where corrections are needed
-- Shareable results page
+- **Results dashboard** (`/results/[uploadId]`):
+  - Side-by-side video comparison (user swing vs Tiger Woods 2000)
+  - DTL/FO view toggle switches both videos simultaneously
+  - Phase-by-phase navigation (Address, Top, Impact, Follow-Through) seeks both videos to their respective timestamps
+  - Play/pause syncs both videos
+  - Progress bar with phase markers
+  - Collapsible angle comparison table with delta color-coding
+  - Top 3 coaching feedback cards with severity badges
+- **Video serving with HTTP range requests** — custom endpoint replaces StaticFiles, enabling instant video seeking in the browser
+- **Phase detection improvements:**
+  - Velocity-based detection: anchors on peak downswing speed, backtracks to find top of backswing
+  - Visibility filtering: frames with low MediaPipe confidence (< 0.4) excluded from signal analysis
+  - Address detection picks the most settled frame within the still period (highest Y / hands lowest)
+  - Follow-through detection uses midpoint of the first settled period after impact
+  - Handles videos with pre-shot routines, waggles, and long setup periods
+- **Frontend redirect** — upload form redirects to results page after analysis completes
+
+### Phase 4 (next)
+
+- Skeleton overlays on video at key phases
+- Drill content curation and expanded coaching tips
+- Onboarding flow and polish
+- QA and edge case handling
 
 ---
 

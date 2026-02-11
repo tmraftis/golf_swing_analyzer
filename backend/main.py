@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.routes.upload import router as upload_router
 from app.routes.analysis import router as analysis_router
+from app.routes.video import router as video_router
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +54,9 @@ app.add_middleware(
 
 app.include_router(upload_router, prefix="/api")
 app.include_router(analysis_router, prefix="/api")
+
+# Serve videos with range request support (needed for browser seeking)
+app.include_router(video_router)
 
 
 @app.get("/api/health")

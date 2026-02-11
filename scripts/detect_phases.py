@@ -43,13 +43,17 @@ DEFAULT_PARAMS = {
 
 # ─── Signal extraction ───
 
-def extract_hand_signal(frames, landmark_name):
+def extract_hand_signal(frames, landmark_name, min_visibility=0.4):
     """
     Extract Y-position and visibility arrays for a landmark across all frames.
 
+    Frames with visibility below min_visibility are treated as undetected
+    (y=NaN) to prevent low-confidence tracking artifacts from corrupting
+    the signal — especially common at video start/end and during fast motion.
+
     Returns:
         (y_array, visibility_array): 1D numpy arrays of length len(frames).
-        Frames with no detection get y=NaN and visibility=0.
+        Frames with no detection or low visibility get y=NaN and visibility=0.
     """
     n = len(frames)
     y_arr = np.full(n, np.nan)
@@ -58,8 +62,9 @@ def extract_hand_signal(frames, landmark_name):
     for i, f in enumerate(frames):
         if f["detected"] and landmark_name in f["landmarks"]:
             lm = f["landmarks"][landmark_name]
-            y_arr[i] = lm["y"]
-            vis_arr[i] = lm["visibility"]
+            if lm["visibility"] >= min_visibility:
+                y_arr[i] = lm["y"]
+                vis_arr[i] = lm["visibility"]
 
     return y_arr, vis_arr
 
@@ -136,51 +141,110 @@ def select_primary_landmark(frames, params):
 
 # ─── Phase detection functions ───
 
-def find_top_of_backswing(y_smooth, velocity, rough_address_y, fps, params):
+def find_top_of_backswing(y_smooth, velocity, rough_address_y, fps, params,
+                          visibility=None):
     """
-    Find the top of backswing: first significant local minimum of hand Y
-    where a fast downswing follows.
+    Find the top of backswing: the local minimum of hand Y immediately
+    before the fastest downswing.
+
+    Strategy:
+      1. Find the frame with peak downswing velocity (largest positive Y change
+         = hands coming down fastest). This is the most reliable signal.
+      2. Search backwards from that peak to find the preceding local minimum
+         of Y — that's the top of backswing.
+      3. Fall back to prominence-based search if velocity approach fails.
+
+    Using visibility data when available to discount low-confidence frames
+    that may contain tracking artifacts during fast motion.
 
     Returns (frame_index, diagnostics_dict). Returns (-1, diag) if not found.
     """
     n = len(y_smooth)
     prominence = params["top_prominence_threshold"]
-    val_frames = params["downswing_validation_frames"]
 
-    # Find all local minima (check 2 frames on each side for robustness)
+    # Compute directional velocity (positive = Y increasing = hands going down)
+    y_diff = np.diff(y_smooth)
+
+    # Weight by visibility if available — low-visibility frames are unreliable
+    if visibility is not None:
+        vis_smooth = smooth_signal(visibility, params["smoothing_window"])
+        # Frames with visibility below 0.6 are likely tracking artifacts
+        vis_weight = np.clip(vis_smooth[:-1], 0.3, 1.0)
+        weighted_diff = y_diff * vis_weight
+    else:
+        weighted_diff = y_diff
+
+    # Apply rolling average to directional velocity for robustness
+    dir_vel_window = max(3, params["smoothing_window"])
+    padded = np.pad(weighted_diff, dir_vel_window // 2, mode="edge")
+    kernel = np.ones(dir_vel_window) / dir_vel_window
+    dir_vel_smooth = np.convolve(padded, kernel, mode="same")
+    dir_vel_smooth = dir_vel_smooth[dir_vel_window//2:dir_vel_window//2+len(weighted_diff)]
+
+    diag = {}
+
+    # Strategy 1: Find peak downswing velocity, then search backwards for the top
+    # The downswing is the fastest part of the swing — large positive dY/dt
+    peak_downswing = int(np.argmax(dir_vel_smooth))
+    diag["peak_downswing_frame"] = peak_downswing
+    diag["peak_downswing_vel"] = float(dir_vel_smooth[peak_downswing])
+
+    # Validate: the peak must be significantly fast (not just noise)
+    if dir_vel_smooth[peak_downswing] > params["still_threshold"] * 5:
+        # Search backwards from peak to find the preceding Y minimum
+        # The top is where hands stop going up and start coming down
+        search_start = max(0, peak_downswing - int(fps * 3))  # up to 3s before peak
+        search_region = y_smooth[search_start:peak_downswing + 1]
+
+        if len(search_region) > 2:
+            # Find the minimum Y in this region (hands at highest point)
+            local_min_idx = int(np.argmin(search_region)) + search_start
+
+            # Verify it's a real top: Y should be significantly above address level
+            top_prominence = rough_address_y - y_smooth[local_min_idx]
+            if top_prominence > prominence:
+                diag["chosen"] = local_min_idx
+                diag["method"] = "velocity_peak_backtrack"
+                diag["top_prominence"] = float(top_prominence)
+                return local_min_idx, diag
+
+    # Strategy 2: Fallback — prominence-based with velocity validation
     minima = []
     for i in range(2, n - 2):
         if (y_smooth[i] <= y_smooth[i - 1] and y_smooth[i] <= y_smooth[i + 1] and
                 y_smooth[i] <= y_smooth[i - 2] and y_smooth[i] <= y_smooth[i + 2]):
             minima.append(i)
 
-    # Filter by prominence: must be significantly higher than address level
-    # (lower Y value = higher position in image)
     qualified = [m for m in minima if (rough_address_y - y_smooth[m]) > prominence]
+    diag["all_minima_count"] = len(minima)
+    diag["qualified_count"] = len(qualified)
 
-    diag = {"all_minima_count": len(minima), "qualified_count": len(qualified)}
-
-    # Validate with downswing check: velocity should spike after top
+    val_frames = params["downswing_validation_frames"]
+    validated = []
     for candidate in qualified:
         window_end = min(candidate + val_frames, n)
         post_vel = velocity[candidate:window_end]
         if len(post_vel) > 0 and np.max(post_vel) > params["still_threshold"] * 3:
-            diag["chosen"] = candidate
-            diag["validated"] = True
-            return candidate, diag
+            validated.append(candidate)
 
-    # Fallback: use the first qualified minimum
-    if qualified:
-        best = qualified[0]
+    if validated:
+        best = min(validated, key=lambda m: y_smooth[m])
         diag["chosen"] = best
-        diag["fallback"] = True
+        diag["method"] = "prominence_fallback"
+        diag["candidates_count"] = len(validated)
         return best, diag
 
-    # Last resort: global minimum of Y in the signal
+    if qualified:
+        best = min(qualified, key=lambda m: y_smooth[m])
+        diag["chosen"] = best
+        diag["method"] = "prominence_only"
+        return best, diag
+
+    # Last resort: global minimum
     if len(y_smooth) > 0:
         gmin = int(np.argmin(y_smooth))
         diag["chosen"] = gmin
-        diag["global_min_fallback"] = True
+        diag["method"] = "global_min"
         return gmin, diag
 
     return -1, {**diag, "error": "no_valid_top"}
@@ -240,14 +304,19 @@ def find_address(y_smooth, velocity, top_frame, params):
     if hands_low_runs:
         # Pick the last qualifying run (closest to takeaway)
         last_run = hands_low_runs[-1]
-        address_frame = last_run[1]
+        # Within the run, pick the frame with highest Y (hands at their lowest
+        # = most settled at ball level). This gives a more natural "address"
+        # position rather than the very last still frame before takeaway.
+        run_slice = y_smooth[last_run[0]:last_run[1] + 1]
+        address_frame = last_run[0] + int(np.argmax(run_slice))
         diag["chosen_run"] = last_run
         diag["address_frame"] = address_frame
         return address_frame, diag
 
     # Fallback: use the last run with the highest average Y (hands lowest)
     best_run = max(runs, key=lambda r: np.mean(y_smooth[r[0]:r[1] + 1]))
-    address_frame = best_run[1]
+    run_slice = y_smooth[best_run[0]:best_run[1] + 1]
+    address_frame = best_run[0] + int(np.argmax(run_slice))
     diag["fallback"] = True
     diag["chosen_run"] = best_run
     diag["address_frame"] = address_frame
@@ -256,33 +325,75 @@ def find_address(y_smooth, velocity, top_frame, params):
 
 def find_impact(y_smooth, velocity, top_frame, address_y, fps, params):
     """
-    Find impact: FIRST frame where hand Y returns to near address Y after top.
+    Find impact: the moment hands reach maximum downswing speed and decelerate.
 
-    The key insight: during the downswing, Y increases (hands come down).
-    Impact is the FIRST time Y gets close to address level. We don't want
-    to search too far and accidentally find a second swing.
+    Uses two strategies:
+      1. Velocity-based: Find the peak downswing velocity after top, then
+         find where the velocity drops below a threshold — this is impact.
+         A golf downswing takes 0.2-0.5s, so impact is close after the top.
+      2. Y-crossing fallback: If velocity method fails, find where Y returns
+         to near address level.
 
     Returns (frame_index, diagnostics_dict). Returns (-1, diag) if not found.
     """
-    window_frames = int(params["impact_search_window_sec"] * fps)
+    # Limit search to a reasonable window after top
+    max_downswing_sec = 1.0  # real downswing is 0.2-0.5s, allow margin
+    window_frames = int(max_downswing_sec * fps)
     search_end = min(top_frame + window_frames, len(y_smooth))
     search_region = y_smooth[top_frame:search_end]
 
     if len(search_region) == 0:
         return -1, {"error": "no_frames_after_top"}
 
-    # Strategy: find the FIRST frame where Y crosses a threshold near address level.
-    # Use 85% of address_y as threshold (hands don't always return to exact address height)
-    threshold_y = address_y * 0.85
+    # Strategy 1: Velocity-based impact detection
+    # Compute directional velocity in search region (positive = Y increasing = hands down)
+    if len(search_region) > 1:
+        dir_vel = np.diff(search_region)
+        # Smooth directional velocity
+        if len(dir_vel) > 3:
+            kernel = np.ones(3) / 3
+            dir_vel_smooth = np.convolve(dir_vel, kernel, mode="same")
+        else:
+            dir_vel_smooth = dir_vel
 
-    # Find first frame where Y rises above threshold (hands coming down to ball)
+        # Find peak downswing velocity (max positive dY)
+        peak_idx = int(np.argmax(dir_vel_smooth))
+        peak_vel = dir_vel_smooth[peak_idx]
+
+        if peak_vel > params["still_threshold"] * 2:
+            # Impact is where velocity drops back to near-zero after the peak
+            # Search from peak forward for velocity settling
+            settle_threshold = peak_vel * 0.15  # velocity drops to 15% of peak
+            for i in range(peak_idx + 1, len(dir_vel_smooth)):
+                if dir_vel_smooth[i] < settle_threshold:
+                    impact_frame = top_frame + i
+                    diag = {
+                        "search_range": (top_frame, search_end),
+                        "impact_frame": impact_frame,
+                        "peak_downswing_vel": float(peak_vel),
+                        "method": "velocity_settle",
+                    }
+                    return impact_frame, diag
+
+            # If velocity never fully settles, use the point of max deceleration
+            # (largest drop in velocity after peak)
+            if peak_idx + 2 < len(dir_vel_smooth):
+                decel = -np.diff(dir_vel_smooth[peak_idx:])
+                max_decel_offset = int(np.argmax(decel))
+                impact_frame = top_frame + peak_idx + max_decel_offset + 1
+                diag = {
+                    "search_range": (top_frame, search_end),
+                    "impact_frame": impact_frame,
+                    "method": "max_deceleration",
+                }
+                return impact_frame, diag
+
+    # Strategy 2: Y-crossing fallback
+    threshold_y = address_y * 0.85
     crossings = np.where(search_region >= threshold_y)[0]
 
     if len(crossings) > 0:
-        # Take the first crossing - this is impact
         first_crossing = crossings[0]
-        # Refine: among the first few crossing frames, pick the one closest to address_y
-        # (look at a small window around the first crossing)
         refine_end = min(first_crossing + 5, len(search_region))
         refine_region = search_region[first_crossing:refine_end]
         refine_dist = np.abs(refine_region - address_y)
@@ -293,11 +404,11 @@ def find_impact(y_smooth, velocity, top_frame, address_y, fps, params):
             "search_range": (top_frame, search_end),
             "distance_to_address": float(np.abs(search_region[best_idx] - address_y)),
             "impact_frame": impact_frame,
-            "method": "first_crossing",
+            "method": "y_crossing_fallback",
         }
         return impact_frame, diag
 
-    # Fallback: no crossing found - find closest approach to address_y
+    # Last fallback: closest approach to address Y
     distance_to_address = np.abs(search_region - address_y)
     best_idx = int(np.argmin(distance_to_address))
     impact_frame = top_frame + int(best_idx)
@@ -310,64 +421,92 @@ def find_impact(y_smooth, velocity, top_frame, address_y, fps, params):
     return impact_frame, diag
 
 
-def find_follow_through(y_smooth, velocity, impact_frame, top_frame, fps, params):
+def find_follow_through(y_smooth, velocity, impact_frame, top_frame, fps, params,
+                        visibility=None):
     """
-    Find follow-through: next local minimum of hand Y after impact
-    (hands go high again in finish position).
+    Find follow-through: the finish position where hands settle after
+    the post-impact rise.
 
-    Uses the backswing duration as a guide for how far to search
-    (follow-through typically takes similar time to the backswing).
+    Strategy:
+      1. Skip past the immediate post-impact zone (fast motion with
+         potentially unreliable tracking).
+      2. Look for where velocity settles to near-zero after impact —
+         this is the stable finish position.
+      3. Fall back to local minimum search if velocity method fails.
 
     Returns (frame_index, diagnostics_dict). Returns (-1, diag) if not found.
     """
     window_frames = int(params["followthrough_search_window_sec"] * fps)
-    search_start = impact_frame + 1
+    # Skip at least 0.3s after impact to avoid tracking artifacts during fast motion
+    min_gap = int(0.3 * fps)
+    search_start = impact_frame + min_gap
     search_end = min(impact_frame + window_frames, len(y_smooth))
 
     if search_start >= search_end:
-        return -1, {"error": "no_frames_after_impact"}
+        # If the gap pushes past the end, search from right after impact
+        search_start = impact_frame + 1
+        if search_start >= search_end:
+            return -1, {"error": "no_frames_after_impact"}
 
     search_region = y_smooth[search_start:search_end]
+    vel_region = velocity[search_start:search_end]
 
-    # After impact, hands rise (Y decreases), then stop at finish.
-    # The follow-through is the first significant local min after impact
-    # where Y has dropped meaningfully below impact level.
-    impact_y = y_smooth[impact_frame]
-    top_y = y_smooth[top_frame]
-    # The follow-through hands should be at least partway between impact and top height
-    ft_threshold = impact_y - (impact_y - top_y) * 0.3  # at least 30% of the way up
+    diag = {"search_range": (search_start, search_end)}
 
-    # Find local minima in the search region
+    # Strategy 1: Find where velocity settles to near-zero after impact
+    # The follow-through is where the golfer reaches the stable finish position.
+    # Find the first long still run and pick its midpoint — the golfer
+    # holds the finish, so the middle of the settled period is most natural.
+    still_thresh = params["still_threshold"]
+    min_still = 3  # need at least 3 consecutive still frames
+    settle_start = None
+
+    for i in range(len(vel_region)):
+        if vel_region[i] < still_thresh:
+            if settle_start is None:
+                settle_start = i
+        else:
+            if settle_start is not None and (i - settle_start) >= min_still:
+                # Found a qualifying still run — use its midpoint
+                mid = settle_start + (i - settle_start) // 2
+                ft_frame = search_start + mid
+                diag["chosen"] = ft_frame
+                diag["method"] = "velocity_settle"
+                diag["settle_run"] = (search_start + settle_start, search_start + i - 1)
+                return ft_frame, diag
+            settle_start = None
+
+    # Check if the still run extends to end of search window
+    if settle_start is not None and (len(vel_region) - settle_start) >= min_still:
+        mid = settle_start + (len(vel_region) - settle_start) // 2
+        ft_frame = search_start + mid
+        diag["chosen"] = ft_frame
+        diag["method"] = "velocity_settle"
+        diag["settle_run"] = (search_start + settle_start, search_start + len(vel_region) - 1)
+        return ft_frame, diag
+
+    # Strategy 2: Find local minimum of Y in search region
+    # (hands at highest point in finish position)
     minima = []
     for i in range(2, len(search_region) - 2):
         if (search_region[i] <= search_region[i - 1] and
                 search_region[i] <= search_region[i + 1]):
             minima.append(i)
 
-    # Filter minima to those where hands are significantly above impact level
-    qualified = [m for m in minima if search_region[m] < ft_threshold]
-
-    if qualified:
-        # Return the FIRST qualified minimum (earliest follow-through peak)
-        best = qualified[0]
-        ft_frame = search_start + best
-        diag = {
-            "minima_count": len(minima),
-            "qualified_count": len(qualified),
-            "chosen": ft_frame,
-        }
-        return ft_frame, diag
-
-    # If no qualified minima, take deepest minimum in search region
     if minima:
-        best = min(minima, key=lambda m: search_region[m])
+        # Use the first local minimum (earliest stable finish)
+        best = minima[0]
         ft_frame = search_start + best
-        return ft_frame, {"fallback": "deepest_minimum", "chosen": ft_frame}
+        diag["chosen"] = ft_frame
+        diag["method"] = "local_minimum"
+        return ft_frame, diag
 
     # Last resort: global minimum in the search window
     ft_idx = int(np.argmin(search_region))
     ft_frame = search_start + ft_idx
-    return ft_frame, {"fallback": "global_min", "chosen": ft_frame}
+    diag["chosen"] = ft_frame
+    diag["method"] = "global_min"
+    return ft_frame, diag
 
 
 # ─── Main orchestrator ───
@@ -414,13 +553,20 @@ def detect_phases(landmarks_data, view="dtl", params=None):
     y_smooth = smooth_signal(y_raw, effective_params["smoothing_window"])
     velocity = compute_velocity(y_smooth, effective_params["velocity_window"])
 
-    # Step 2: Rough address Y estimate (max Y in first quarter = hands low)
-    first_quarter = y_smooth[:max(total_frames // 4, 30)]
-    rough_address_y = float(np.nanmax(first_quarter))
+    # Step 2: Rough address Y estimate (max Y where hands are low)
+    # Use the global max of valid (non-NaN) smoothed Y values.
+    # This is the position where hands are lowest (near ball level).
+    valid_y = y_smooth[~np.isnan(y_smooth)]
+    if len(valid_y) == 0:
+        print("  ERROR: No valid landmark data found.")
+        print("  Check that the video shows the golfer clearly.")
+        sys.exit(1)
+    rough_address_y = float(np.nanmax(valid_y))
 
     # Step 3: Find top of backswing (the anchor)
     top_frame, top_diag = find_top_of_backswing(
-        y_smooth, velocity, rough_address_y, fps, effective_params
+        y_smooth, velocity, rough_address_y, fps, effective_params,
+        visibility=visibility
     )
     if top_frame < 0:
         print("  ERROR: Could not detect top of backswing.")
@@ -443,14 +589,15 @@ def detect_phases(landmarks_data, view="dtl", params=None):
     )
     if impact_frame >= 0:
         print(f"  IMPACT:            frame {impact_frame}  (t={impact_frame/fps:.2f}s, Y={y_smooth[impact_frame]:.4f})")
-        print(f"                     distance to address Y: {impact_diag['distance_to_address']:.4f}")
+        print(f"                     method: {impact_diag.get('method', 'unknown')}")
     else:
         print(f"  IMPACT:            NOT DETECTED")
 
     # Step 6: Find follow-through (after impact)
     if impact_frame >= 0:
         ft_frame, ft_diag = find_follow_through(
-            y_smooth, velocity, impact_frame, top_frame, fps, effective_params
+            y_smooth, velocity, impact_frame, top_frame, fps, effective_params,
+            visibility=visibility
         )
     else:
         ft_frame = -1
