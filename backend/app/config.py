@@ -5,6 +5,18 @@ from pydantic_settings import BaseSettings
 _PROJECT_ROOT = Path(__file__).parent.parent.parent
 
 
+def _find_model_path() -> str:
+    """Find the MediaPipe model, checking multiple locations."""
+    candidates = [
+        _PROJECT_ROOT / "scripts" / "pose_landmarker_heavy.task",  # local dev
+        Path("/app/models/pose_landmarker_heavy.task"),  # Docker / Railway
+    ]
+    for p in candidates:
+        if p.exists():
+            return str(p)
+    return str(candidates[0])  # fallback to local dev path
+
+
 class Settings(BaseSettings):
     # Upload settings
     upload_dir: Path = Path("uploads")
@@ -14,7 +26,7 @@ class Settings(BaseSettings):
     allowed_swing_types: list[str] = ["iron"]
 
     # Pipeline settings
-    model_path: str = str(_PROJECT_ROOT / "scripts" / "pose_landmarker_heavy.task")
+    model_path: str = _find_model_path()
     frame_step: int = 2  # Process every Nth frame
     min_detection_rate: float = 0.7  # Minimum pose detection rate
 
