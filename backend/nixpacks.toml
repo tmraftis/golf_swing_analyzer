@@ -1,0 +1,11 @@
+[phases.setup]
+aptPkgs = ["libgl1-mesa-glx", "libglib2.0-0", "libxcb1", "libsm6", "libxext6", "libxrender1"]
+
+[phases.install]
+cmds = [
+    "pip install -r requirements.txt",
+    "pip uninstall -y opencv-python opencv-contrib-python 2>/dev/null; pip install opencv-python-headless>=4.8.0"
+]
+
+[start]
+cmd = "uvicorn main:app --host 0.0.0.0 --port $PORT"
