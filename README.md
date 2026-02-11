@@ -2,9 +2,9 @@
 
 **"Swing pure"**
 
-Compare your golf swing to Tiger Woods' iconic 2000 iron swing using computer vision. Upload down-the-line (DTL) and face-on (FO) videos, and get back angle comparisons, top 3 faults, and drill recommendations — all in under 60 seconds.
+Compare your golf swing to Tiger Woods' iconic 2000 iron swing using computer vision. Upload down-the-line (DTL) and face-on (FO) videos, and get back angle comparisons, top 3 faults, and drill recommendations — all in under 20 seconds with GPU acceleration.
 
-**Current status:** Phase 3 complete. Upload videos, get AI-powered swing analysis with side-by-side video comparison against Tiger Woods, phase-by-phase navigation, angle comparison tables, and coaching feedback. V1 is iron-only; driver support is planned for a future release.
+**Current status:** Phase 3 complete + Modal GPU integration. Upload videos, get AI-powered swing analysis with side-by-side video comparison against Tiger Woods, phase-by-phase navigation, angle comparison tables, and coaching feedback. GPU-accelerated landmark extraction via Modal runs both videos in parallel on T4 GPUs. V1 is iron-only; driver support is planned for a future release.
 
 ---
 
@@ -26,7 +26,8 @@ POST /api/upload  →  Save files, return upload_id
     ▼
 POST /api/analyze/{upload_id}
     │
-    ├─ Extract landmarks (DTL + FO)     ~15-25s each
+    ├─ Extract landmarks (DTL + FO)     ~5-8s (Modal GPU, parallel)
+    │                                    ~15-25s each (local CPU, sequential)
     ├─ Detect swing phases               ~1s
     ├─ Calculate angles                   ~0.5s
     ├─ Load Tiger reference data          cached
@@ -98,10 +99,14 @@ golf_swing_analyzer/
 │   ├── .env.local                         # NEXT_PUBLIC_API_URL
 │   └── package.json
 │
+├── modal_app/                             # Modal GPU worker (deploys to Modal)
+│   ├── __init__.py
+│   └── landmark_worker.py                 # GPU-accelerated MediaPipe extraction
+│
 ├── backend/                               # FastAPI app (deploys to Railway)
 │   ├── main.py                            # App entry, CORS, lifespan, routers
 │   ├── app/
-│   │   ├── config.py                      # Settings (upload, pipeline, origins)
+│   │   ├── config.py                      # Settings (upload, pipeline, Modal, origins)
 │   │   ├── routes/
 │   │   │   ├── upload.py                  # POST /api/upload
 │   │   │   ├── analysis.py               # POST /api/analyze, GET /api/analysis
@@ -114,7 +119,8 @@ golf_swing_analyzer/
 │   │   └── pipeline/                      # Swing analysis pipeline
 │   │       ├── __init__.py                # run_analysis() orchestrator
 │   │       ├── models.py                  # Pipeline exception hierarchy
-│   │       ├── landmark_extractor.py      # MediaPipe pose extraction wrapper
+│   │       ├── landmark_extractor.py      # MediaPipe pose extraction (local CPU)
+│   │       ├── modal_extractor.py         # Modal GPU client (parallel extraction)
 │   │       ├── phase_detector.py          # Swing phase detection wrapper
 │   │       ├── angle_calculator.py        # Angle calculation wrapper
 │   │       ├── reference_data.py          # Tiger reference data loader
@@ -168,7 +174,17 @@ curl -o scripts/pose_landmarker_heavy.task \
   https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task
 ```
 
-### 2. Run the backend
+### 2. Set up Modal (optional, for GPU acceleration)
+
+```bash
+pip install modal
+modal token set --token-id <your-id> --token-secret <your-secret>
+modal deploy modal_app/landmark_worker.py
+```
+
+Then set `USE_MODAL=true` in `backend/.env`. Without Modal, landmark extraction runs locally on CPU (~50s). With Modal, both videos are processed in parallel on T4 GPUs (~10-15s).
+
+### 3. Run the backend
 
 ```bash
 cd backend
@@ -179,7 +195,7 @@ python3 -m uvicorn main:app --reload --port 8000
 
 The backend will verify the MediaPipe model exists at startup and report its status via `/api/health`.
 
-### 3. Run the frontend
+### 4. Run the frontend
 
 ```bash
 cd frontend
@@ -190,12 +206,12 @@ npm run dev
 
 Set `NEXT_PUBLIC_API_URL=http://localhost:8000` in `frontend/.env.local` (already configured for local dev).
 
-### 4. Analyze a swing
+### 5. Analyze a swing
 
 1. Go to `http://localhost:3000/upload`
 2. Select "Iron" as the swing type
 3. Upload a down-the-line (DTL) and face-on (FO) video of your swing
-4. Click "Submit for Analysis" — the pipeline takes ~30-50 seconds
+4. Click "Submit for Analysis" — takes ~10-15s with Modal, ~50s without
 5. View your results dashboard: side-by-side video comparison against Tiger, phase-by-phase navigation, angle comparisons, and coaching tips
 
 ---
@@ -206,7 +222,8 @@ Set `NEXT_PUBLIC_API_URL=http://localhost:8000` in `frontend/.env.local` (alread
 |-------|-----------|--------------|
 | Frontend | Next.js 16, TypeScript, Tailwind CSS v4 | Vercel |
 | Backend | FastAPI, Python 3.10+ | Railway |
-| Pose estimation | MediaPipe Pose Landmarker (heavy, 33 landmarks) | Runs on backend |
+| GPU worker | Modal (T4 GPU, parallel extraction) | Modal |
+| Pose estimation | MediaPipe Pose Landmarker (heavy, 33 landmarks) | Modal GPU or local CPU |
 | Analysis pipeline | Custom Python (landmark extraction, phase detection, angle math, comparison, feedback) | Backend |
 | Storage | Local filesystem (v1), cloud bucket planned | — |
 | Auth | Google OAuth (deferred, not yet implemented) | — |
@@ -275,7 +292,7 @@ Upload two swing videos for analysis.
 
 ### `POST /api/analyze/{upload_id}`
 
-Run the full analysis pipeline on previously uploaded videos. Processing takes ~30-50 seconds.
+Run the full analysis pipeline on previously uploaded videos. Processing takes ~10-15s with Modal GPU, ~50s with local CPU.
 
 **Request body:**
 ```json
@@ -341,14 +358,14 @@ Retrieve a previously computed analysis result from cache.
 
 The pipeline runs as a sequence of steps, each with error handling and logging:
 
-| Step | Module | What it does | Time |
-|------|--------|-------------|------|
-| 1 | `landmark_extractor.py` | MediaPipe pose extraction, every 2nd frame | ~15-25s per video |
-| 2 | `phase_detector.py` | Auto-detect address, top, impact, follow-through | ~0.5s |
-| 3 | `angle_calculator.py` | Compute golf-specific angles at each phase | ~0.5s |
-| 4 | `reference_data.py` | Load Tiger Woods reference (cached with `lru_cache`) | instant |
-| 5 | `comparison_engine.py` | Compute deltas, apply weights, rank by significance | ~0.1s |
-| 6 | `feedback_engine.py` | Match fault rules, generate coaching text | ~0.1s |
+| Step | Module | What it does | Time (Modal) | Time (local) |
+|------|--------|-------------|:---:|:---:|
+| 1 | `modal_extractor.py` / `landmark_extractor.py` | MediaPipe pose extraction (parallel on GPU or sequential on CPU) | ~5-8s total | ~15-25s × 2 |
+| 2 | `phase_detector.py` | Auto-detect address, top, impact, follow-through | ~0.5s | ~0.5s |
+| 3 | `angle_calculator.py` | Compute golf-specific angles at each phase | ~0.5s | ~0.5s |
+| 4 | `reference_data.py` | Load Tiger Woods reference (cached with `lru_cache`) | instant | instant |
+| 5 | `comparison_engine.py` | Compute deltas, apply weights, rank by significance | ~0.1s | ~0.1s |
+| 6 | `feedback_engine.py` | Match fault rules, generate coaching text | ~0.1s | ~0.1s |
 
 ### Comparison Engine
 
@@ -471,6 +488,9 @@ python scripts/build_reference_json.py
 - **Velocity-based phase detection** — more robust than Y-position thresholds; anchors on peak downswing speed (the most reliable signal in any swing video) and works backwards/forwards from there
 - **Visibility-weighted signal filtering** — MediaPipe landmark visibility below 0.4 treated as NaN to prevent tracking artifacts from corrupting phase detection, especially at video boundaries and during fast motion
 - **Video readiness tracking in React** — `loadeddata` event listeners ensure video seeking works even when metadata hasn't loaded yet; pending seeks are queued and executed once the video is ready
+- **Modal GPU acceleration** — landmark extraction offloaded to Modal T4 GPUs, with both DTL and FO videos processed in parallel via `.spawn()` / `.get()`. Reduces extraction from ~50s (sequential CPU) to ~5-8s (parallel GPU). Automatic fallback to local CPU if Modal is unavailable.
+- **Video downscaling for inference** — frames downscaled to 960px height before MediaPipe inference on Modal; normalized landmark coordinates remain resolution-independent, with pixel positions mapped back to original dimensions
+- **Lazy Modal import** — `modal` package only imported when `USE_MODAL=true`, so the backend works without Modal installed when running locally
 
 ---
 
@@ -544,12 +564,12 @@ python scripts/build_reference_json.py
 
 ## Performance Targets
 
-| Metric | Target | Actual (Phase 2) |
-|--------|--------|------------------|
-| End-to-end processing time | <60s | ~50s |
-| Landmark detection rate | >70% | Varies by video quality |
-| Top differences returned | 3 | 3 |
-| System uptime (once deployed) | 99% | — |
+| Metric | Target | Local CPU | Modal GPU |
+|--------|--------|:---------:|:---------:|
+| End-to-end processing time | <60s | ~50s | ~10-15s |
+| Landmark detection rate | >70% | Varies by video quality | Same |
+| Top differences returned | 3 | 3 | 3 |
+| System uptime (once deployed) | 99% | — | — |
 
 ---
 

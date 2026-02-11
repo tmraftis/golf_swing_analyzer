@@ -51,6 +51,8 @@ async def analyze_swing(upload_id: str, request: AnalyzeRequest):
                 model_path=settings.model_path,
                 frame_step=settings.frame_step,
                 min_detection_rate=settings.min_detection_rate,
+                use_modal=settings.use_modal,
+                modal_target_height=settings.modal_target_height,
             ),
         )
     except VideoNotFoundError as e:

@@ -33,6 +33,54 @@ def _find_video(upload_dir: str, upload_id: str, view: str) -> str:
     return matches[0]
 
 
+def _extract_landmarks_modal(
+    dtl_path: str,
+    fo_path: str,
+    frame_step: int,
+    min_detection_rate: float,
+    target_height: int,
+    model_path: str,
+) -> tuple:
+    """Extract landmarks via Modal GPUs with fallback to local processing.
+
+    Pipeline errors (e.g. low detection rate) are re-raised immediately.
+    Modal infrastructure errors (connection, timeout, etc.) trigger fallback
+    to local CPU extraction.
+    """
+    try:
+        from .modal_extractor import extract_landmarks_parallel_modal
+
+        logger.info("Extracting landmarks via Modal (GPU-accelerated)...")
+        with open(dtl_path, "rb") as f:
+            dtl_bytes = f.read()
+        with open(fo_path, "rb") as f:
+            fo_bytes = f.read()
+
+        dtl_landmarks, fo_landmarks = extract_landmarks_parallel_modal(
+            dtl_bytes=dtl_bytes,
+            fo_bytes=fo_bytes,
+            frame_step=frame_step,
+            min_detection_rate=min_detection_rate,
+            target_height=target_height,
+        )
+        return dtl_landmarks, fo_landmarks
+
+    except PipelineError:
+        # Real extraction failure (e.g. low detection rate) — don't retry locally
+        raise
+
+    except Exception as e:
+        logger.warning(f"Modal extraction failed ({e}), falling back to local...")
+
+        dtl_landmarks = extract_landmarks_from_video(
+            dtl_path, model_path, frame_step, min_detection_rate
+        )
+        fo_landmarks = extract_landmarks_from_video(
+            fo_path, model_path, frame_step, min_detection_rate
+        )
+        return dtl_landmarks, fo_landmarks
+
+
 def run_analysis(
     upload_id: str,
     swing_type: str,
@@ -40,6 +88,8 @@ def run_analysis(
     model_path: str,
     frame_step: int = 2,
     min_detection_rate: float = 0.7,
+    use_modal: bool = False,
+    modal_target_height: int = 960,
 ) -> dict:
     """Run the full analysis pipeline on uploaded swing videos.
 
@@ -50,6 +100,8 @@ def run_analysis(
         model_path: Path to the MediaPipe model file.
         frame_step: Process every Nth frame (default 2).
         min_detection_rate: Minimum acceptable pose detection rate.
+        use_modal: If True, offload landmark extraction to Modal GPUs.
+        modal_target_height: Downscale frames to this height for Modal inference.
 
     Returns:
         Complete analysis result dict matching the API response schema.
@@ -67,15 +119,21 @@ def run_analysis(
     logger.info(f"Found videos: DTL={dtl_path}, FO={fo_path}")
 
     # Step 2: Extract landmarks
-    logger.info("Extracting landmarks from DTL video...")
-    dtl_landmarks = extract_landmarks_from_video(
-        dtl_path, model_path, frame_step, min_detection_rate
-    )
+    if use_modal:
+        dtl_landmarks, fo_landmarks = _extract_landmarks_modal(
+            dtl_path, fo_path, frame_step, min_detection_rate,
+            modal_target_height, model_path,
+        )
+    else:
+        logger.info("Extracting landmarks from DTL video...")
+        dtl_landmarks = extract_landmarks_from_video(
+            dtl_path, model_path, frame_step, min_detection_rate
+        )
 
-    logger.info("Extracting landmarks from FO video...")
-    fo_landmarks = extract_landmarks_from_video(
-        fo_path, model_path, frame_step, min_detection_rate
-    )
+        logger.info("Extracting landmarks from FO video...")
+        fo_landmarks = extract_landmarks_from_video(
+            fo_path, model_path, frame_step, min_detection_rate
+        )
 
     # Step 3: Detect phases
     dtl_phases = detect_swing_phases(dtl_landmarks, "dtl")
