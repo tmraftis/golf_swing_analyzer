@@ -34,7 +34,7 @@ class Settings(BaseSettings):
     use_modal: bool = False  # Enable Modal for landmark extraction
     modal_target_height: int = 960  # Downscale frames before inference
 
-    model_config = {"env_file": ".env"}
+    model_config = {"env_file": ".env", "protected_namespaces": ("settings_",)}
 
 
 settings = Settings()

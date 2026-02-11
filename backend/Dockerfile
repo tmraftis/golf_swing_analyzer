@@ -15,9 +15,13 @@ WORKDIR /app
 
 # Install Python dependencies
 COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt && \
-    pip uninstall -y opencv-python opencv-contrib-python 2>/dev/null; \
-    pip install --no-cache-dir opencv-python-headless>=4.8.0
+RUN pip install --no-cache-dir -r requirements.txt
+
+# mediapipe pulls full opencv-python which needs X11 libs we don't have.
+# Force-replace it with the headless build in a separate step so pip
+# can't silently skip it.
+RUN pip uninstall -y opencv-python opencv-contrib-python 2>/dev/null || true && \
+    pip install --no-cache-dir --force-reinstall opencv-python-headless>=4.8.0
 
 # Download MediaPipe model
 RUN mkdir -p /app/models && \
