@@ -1,0 +1,12 @@
+frontend/
+frontend/node_modules/
+output/
+output_user/
+assets/
+modal_app/
+*.md
+.git/
+__pycache__/
+*.pyc
+.env
+backend/.env

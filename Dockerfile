@@ -14,12 +14,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Install Python dependencies
-COPY requirements.txt .
+COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 # mediapipe pulls full opencv-python which needs X11 libs we don't have.
-# Force-replace it with the headless build in a separate step so pip
-# can't silently skip it.
+# Force-replace it with the headless build in a separate step.
 RUN pip uninstall -y opencv-python opencv-contrib-python 2>/dev/null || true && \
     pip install --no-cache-dir --force-reinstall opencv-python-headless>=4.8.0
 
@@ -28,8 +27,14 @@ RUN mkdir -p /app/models && \
     curl -L -o /app/models/pose_landmarker_heavy.task \
     https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task
 
-# Copy application code
-COPY . .
+# Copy scripts directory (needed by phase_detector.py and angle_calculator.py)
+COPY scripts/ /app/scripts/
+
+# Copy reference data (Tiger Woods comparison data)
+COPY reference_data/ /app/reference_data/
+
+# Copy backend application code
+COPY backend/ /app/
 
 # Create uploads directory
 RUN mkdir -p /app/uploads

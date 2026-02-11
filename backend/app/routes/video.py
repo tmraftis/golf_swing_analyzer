@@ -14,8 +14,12 @@ from app.config import settings
 
 router = APIRouter()
 
-# Project root for reference data
-_PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
+# Project root for reference data — check local dev (4 levels up) and Docker (3 levels up)
+_candidates = [
+    Path(__file__).parent.parent.parent.parent,  # local dev: backend/app/routes -> repo root
+    Path(__file__).parent.parent.parent,          # Docker: /app/app/routes -> /app
+]
+_PROJECT_ROOT = next((p for p in _candidates if (p / "reference_data").is_dir()), _candidates[0])
 _REFERENCE_DIR = _PROJECT_ROOT / "reference_data"
 
 

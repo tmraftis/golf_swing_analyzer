@@ -9,8 +9,12 @@ from .models import PipelineError
 
 logger = logging.getLogger(__name__)
 
-# Project root
-PROJECT_ROOT = Path(__file__).parent.parent.parent.parent
+# Project root — check local dev (4 levels up) and Docker (3 levels up)
+_candidates = [
+    Path(__file__).parent.parent.parent.parent,  # local dev: backend/app/pipeline -> repo root
+    Path(__file__).parent.parent.parent,          # Docker: /app/app/pipeline -> /app
+]
+PROJECT_ROOT = next((p for p in _candidates if (p / "reference_data").is_dir()), _candidates[0])
 REFERENCE_DATA_DIR = PROJECT_ROOT / "reference_data"
 
 # Map from reference JSON angle names to calculate_angles.py output names.
