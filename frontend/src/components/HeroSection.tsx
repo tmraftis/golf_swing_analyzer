@@ -11,7 +11,7 @@ export default function HeroSection() {
         </h1>
         <p className="text-cream/70 text-lg md:text-xl leading-relaxed mb-10 max-w-xl mx-auto">
           Compare your swing to Tiger Woods&apos; iconic 2000 form. See exactly
-          where to improve with AI-powered pose analysis.
+          where to improve with AI-powered analysis.
         </p>
         <Link
           href="/upload"
