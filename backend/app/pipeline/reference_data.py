@@ -9,6 +9,16 @@ from .models import PipelineError
 
 logger = logging.getLogger(__name__)
 
+# The 12 golf-relevant joints for skeleton overlay
+SKELETON_JOINTS = [
+    "left_shoulder", "right_shoulder",
+    "left_elbow", "right_elbow",
+    "left_wrist", "right_wrist",
+    "left_hip", "right_hip",
+    "left_knee", "right_knee",
+    "left_ankle", "right_ankle",
+]
+
 # Project root — check local dev (4 levels up) and Docker (3 levels up)
 _candidates = [
     Path(__file__).parent.parent.parent.parent,  # local dev: backend/app/pipeline -> repo root
@@ -95,10 +105,19 @@ def load_reference(swing_type: str, view: str) -> dict:
             if ref_key in phase["angles"]:
                 remapped_angles[user_key] = phase["angles"][ref_key]
 
+        # Extract key_landmarks for skeleton overlay (only x, y needed)
+        raw_landmarks = phase.get("key_landmarks", {})
+        skeleton_landmarks = {}
+        for joint in SKELETON_JOINTS:
+            if joint in raw_landmarks:
+                lm = raw_landmarks[joint]
+                skeleton_landmarks[joint] = {"x": lm["x"], "y": lm["y"]}
+
         result[phase_name] = {
             "frame": phase["frame"],
             "timestamp_sec": phase.get("timestamp_sec", 0),
             "angles": remapped_angles,
+            "landmarks": skeleton_landmarks,
         }
 
     return result

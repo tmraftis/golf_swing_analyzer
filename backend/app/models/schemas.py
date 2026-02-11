@@ -48,3 +48,5 @@ class AnalysisResponse(BaseModel):
     phase_frames: dict
     video_urls: dict[str, str] | None = None
     reference_video_urls: dict[str, str] | None = None
+    user_phase_landmarks: dict | None = None
+    reference_phase_landmarks: dict | None = None

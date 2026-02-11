@@ -90,6 +90,7 @@ golf_swing_analyzer/
 │   │   │       ├── PhaseTimeline.tsx      # Horizontal 4-phase navigator
 │   │   │       ├── ViewToggle.tsx         # DTL/FO segmented control
 │   │   │       ├── AngleComparisonTable.tsx # Angle comparison table (collapsible)
+│   │   │       ├── SkeletonOverlay.tsx    # Canvas overlay: pose skeleton on video
 │   │   │       ├── DifferenceCard.tsx     # Coaching feedback card
 │   │   │       ├── LoadingSkeleton.tsx    # Loading placeholder
 │   │   │       └── ErrorState.tsx         # Error display
@@ -98,7 +99,7 @@ golf_swing_analyzer/
 │   │   │   ├── validation.ts              # File type, size, duration checks
 │   │   │   └── constants.ts               # Brand values, limits, accepted types
 │   │   └── types/
-│   │       └── index.ts                   # TypeScript interfaces (angles, phases, videos)
+│   │       └── index.ts                   # TypeScript interfaces (angles, phases, videos, landmarks)
 │   ├── public/
 │   │   └── pure-logo.jpeg                 # Logo for frontend
 │   ├── .env.local                         # API URL + PropelAuth credentials
@@ -528,6 +529,7 @@ python scripts/build_reference_json.py
 - **Video downscaling for inference** — frames downscaled to 960px height before MediaPipe inference on Modal; normalized landmark coordinates remain resolution-independent, with pixel positions mapped back to original dimensions
 - **Lazy Modal import** — `modal` package only imported when `USE_MODAL=true`, so the backend works without Modal installed when running locally
 - **Server-side video compression** — uploaded videos (typically iPhone HEVC .MOV, ~15Mbps, ~35MB each) are compressed to H.264 1080p ~4Mbps via ffmpeg after upload, reducing storage by ~73% (~35MB → ~8MB per file). Orientation-aware scale filter preserves portrait (1080×1920) and landscape (1920×1080) dimensions. `+faststart` moves moov atom for HTTP streaming. Graceful fallback: skips compression if ffmpeg is missing or compression fails. Controllable via `COMPRESS_UPLOADS=false` env var
+- **Skeleton overlay via canvas** — toggleable pose skeleton drawn on an HTML5 `<canvas>` absolutely positioned over each video using `pointer-events-none`. Landmarks (normalized 0-1 coords) are mapped to pixel positions accounting for `object-contain` letterboxing/pillarboxing via `getVideoRenderRect()`. `ResizeObserver` redraws on container resize. Overlay only renders at the 4 phase frames (not during live playback) to avoid needing per-frame landmark data transfer. Backend includes phase landmarks (~3-4KB) in the existing `AnalysisResponse` — no extra API call needed
 
 ---
 
@@ -540,7 +542,7 @@ python scripts/build_reference_json.py
 | **2** | Analysis pipeline, comparison engine, coaching feedback, results UI | Done |
 | **3** | Results dashboard: side-by-side video comparison, phase navigation, angle table | Done |
 | **3.5** | Authentication: PropelAuth (Google OAuth + Magic Link), protected routes and API endpoints | Done |
-| **4** | Skeleton overlays, drill content curation, onboarding, polish, QA | Not started |
+| **4** | Skeleton overlays, drill content curation, onboarding, polish, QA | In progress |
 | **5+** | Driver swing support, additional clubs, more pro references | Future |
 
 ### Phase 1 deliverables (completed)
@@ -623,9 +625,19 @@ python scripts/build_reference_json.py
   - Removed redundant "Analyze Your Swing" button from header nav
   - Preloaded all video views for instant DTL/Face On switching
 
-### Phase 4 (next)
+### Phase 4 deliverables (in progress)
 
-- Skeleton overlays on video at key phases
+- **Skeleton overlay on video player:**
+  - Toggleable pose skeleton drawn on both user and Tiger videos at each phase frame
+  - 12 golf-relevant joints (shoulders, elbows, wrists, hips, knees, ankles) connected by skeleton lines
+  - Canvas overlay with `object-contain` coordinate mapping for portrait and landscape videos
+  - Forest Green lines, Cream joint dots matching design system
+  - Toggle button next to play/pause; overlay auto-hides during playback
+  - Backend includes phase landmarks (normalized x,y coords) in API response for both user and reference
+  - Graceful degradation: toggle hidden if landmark data unavailable (old cached results)
+
+### Phase 4 remaining
+
 - Drill content curation and expanded coaching tips
 - Onboarding flow and polish
 - QA and edge case handling

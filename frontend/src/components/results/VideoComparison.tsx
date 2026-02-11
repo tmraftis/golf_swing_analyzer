@@ -6,9 +6,11 @@ import type {
   VideoUrls,
   AngleData,
   SwingPhase,
+  PhaseLandmarkData,
 } from "@/types";
 import { SWING_PHASES, PHASE_LABELS } from "@/types";
 import { getVideoUrl } from "@/lib/api";
+import SkeletonOverlay from "./SkeletonOverlay";
 
 type ViewKey = "dtl" | "fo";
 const VIEWS: ViewKey[] = ["dtl", "fo"];
@@ -21,6 +23,8 @@ interface VideoComparisonProps {
   activeView: VideoAngle;
   activePhase: SwingPhase;
   onPhaseChange: (phase: SwingPhase) => void;
+  userPhaseLandmarks?: PhaseLandmarkData;
+  referencePhaseLandmarks?: PhaseLandmarkData;
 }
 
 export default function VideoComparison({
@@ -31,6 +35,8 @@ export default function VideoComparison({
   activeView,
   activePhase,
   onPhaseChange,
+  userPhaseLandmarks,
+  referencePhaseLandmarks,
 }: VideoComparisonProps) {
   // Refs for all 4 videos: user-dtl, user-fo, ref-dtl, ref-fo
   const userVideoRefs = useRef<Record<ViewKey, HTMLVideoElement | null>>({
@@ -46,6 +52,13 @@ export default function VideoComparison({
   const [userTime, setUserTime] = useState(0);
   const [userDuration, setUserDuration] = useState(0);
   const pendingPhaseRef = useRef<SwingPhase>(activePhase);
+
+  // Skeleton overlay state
+  const [showSkeleton, setShowSkeleton] = useState(false);
+  const skeletonVisible = showSkeleton && !isPlaying;
+  const userLandmarks = userPhaseLandmarks?.[activeView]?.[activePhase];
+  const refLandmarks = referencePhaseLandmarks?.[activeView]?.[activePhase];
+  const hasLandmarkData = !!(userPhaseLandmarks || referencePhaseLandmarks);
 
   // Helper to get the active video elements
   const getActiveUserVideo = useCallback(
@@ -202,6 +215,11 @@ export default function VideoComparison({
                 onEnded={handleEnded}
               />
             ))}
+            <SkeletonOverlay
+              videoRef={userVideoRefs.current[activeView as ViewKey]}
+              landmarks={userLandmarks}
+              visible={skeletonVisible}
+            />
           </div>
         </div>
 
@@ -225,6 +243,11 @@ export default function VideoComparison({
                 onEnded={handleEnded}
               />
             ))}
+            <SkeletonOverlay
+              videoRef={refVideoRefs.current[activeView as ViewKey]}
+              landmarks={refLandmarks}
+              visible={skeletonVisible}
+            />
           </div>
         </div>
       </div>
@@ -282,6 +305,33 @@ export default function VideoComparison({
               </svg>
             )}
           </button>
+
+          {/* Skeleton overlay toggle */}
+          {hasLandmarkData && (
+            <button
+              onClick={() => setShowSkeleton((prev) => !prev)}
+              className={`w-10 h-10 rounded-full flex items-center justify-center transition-colors ${
+                showSkeleton
+                  ? "bg-forest-green text-cream"
+                  : "bg-cream/10 hover:bg-cream/20 text-cream/50"
+              }`}
+              title={showSkeleton ? "Hide skeleton" : "Show skeleton"}
+            >
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                strokeWidth={1.5}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M15.75 6a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0ZM4.501 20.118a7.5 7.5 0 0 1 14.998 0A17.933 17.933 0 0 1 12 21.75c-2.676 0-5.216-.584-7.499-1.632Z"
+                />
+              </svg>
+            </button>
+          )}
 
           <div className="flex items-center gap-1">
             {SWING_PHASES.map((phase) => (

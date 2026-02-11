@@ -62,6 +62,22 @@ export const ANGLE_DISPLAY_NAMES: Record<string, string> = {
   shoulder_hip_offset_x: "Shoulder-Hip Offset",
 };
 
+// --- Skeleton overlay types ---
+
+export interface LandmarkPoint {
+  x: number; // normalized 0-1, origin top-left
+  y: number; // normalized 0-1, origin top-left
+}
+
+export type PhaseLandmarks = Record<string, LandmarkPoint>;
+
+export type ViewPhaseLandmarks = Partial<Record<SwingPhase, PhaseLandmarks>>;
+
+export interface PhaseLandmarkData {
+  dtl: ViewPhaseLandmarks;
+  fo: ViewPhaseLandmarks;
+}
+
 // --- Analysis types ---
 
 export interface PhaseAngles {
@@ -118,4 +134,6 @@ export interface AnalysisResponse {
   phase_frames: PhaseFrames;
   video_urls?: VideoUrls;
   reference_video_urls?: VideoUrls;
+  user_phase_landmarks?: PhaseLandmarkData;
+  reference_phase_landmarks?: PhaseLandmarkData;
 }

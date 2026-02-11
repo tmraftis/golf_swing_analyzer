@@ -49,6 +49,8 @@ export default function ResultsDashboard({ analysis }: ResultsDashboardProps) {
             activeView={activeView}
             activePhase={activePhase}
             onPhaseChange={setActivePhase}
+            userPhaseLandmarks={analysis.user_phase_landmarks}
+            referencePhaseLandmarks={analysis.reference_phase_landmarks}
           />
         )}
 

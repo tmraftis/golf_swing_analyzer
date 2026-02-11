@@ -10,7 +10,7 @@ import os
 import time
 
 from .models import PipelineError, VideoNotFoundError
-from .landmark_extractor import extract_landmarks_from_video
+from .landmark_extractor import extract_landmarks_from_video, GOLF_LANDMARKS
 from .phase_detector import detect_swing_phases
 from .angle_calculator import calculate_angles
 from .reference_data import load_reference
@@ -18,6 +18,31 @@ from .comparison_engine import compute_deltas, rank_differences
 from .feedback_engine import generate_feedback
 
 logger = logging.getLogger(__name__)
+
+
+def _extract_phase_landmarks(landmarks_data: dict, phases: dict) -> dict:
+    """Extract golf-relevant joint positions at each detected phase frame.
+
+    Returns dict keyed by phase name, each value is a dict of
+    joint_name -> {"x": float, "y": float} (normalized 0-1 coords).
+    """
+    frame_lookup = {f["frame"]: f for f in landmarks_data["frames"]}
+    result = {}
+    for phase_name, phase_info in phases.items():
+        frame_data = frame_lookup.get(phase_info["frame"])
+        if not frame_data or not frame_data.get("detected"):
+            result[phase_name] = {}
+            continue
+        lm = frame_data["landmarks"]
+        phase_lm = {}
+        for joint_name in GOLF_LANDMARKS:
+            if joint_name in lm:
+                phase_lm[joint_name] = {
+                    "x": lm[joint_name]["x"],
+                    "y": lm[joint_name]["y"],
+                }
+        result[phase_name] = phase_lm
+    return result
 
 
 def _find_video(upload_dir: str, upload_id: str, view: str) -> str:
@@ -164,6 +189,16 @@ def run_analysis(
     ranked = rank_differences(deltas, user_angles, ref_angles)
     top_differences = generate_feedback(ranked, user_angles, ref_angles)
 
+    # Step 4b: Extract phase landmarks for skeleton overlay
+    user_phase_landmarks = {
+        "dtl": _extract_phase_landmarks(dtl_landmarks, dtl_phases),
+        "fo": _extract_phase_landmarks(fo_landmarks, fo_phases),
+    }
+    reference_phase_landmarks = {
+        "dtl": {phase: data.get("landmarks", {}) for phase, data in dtl_ref.items()},
+        "fo": {phase: data.get("landmarks", {}) for phase, data in fo_ref.items()},
+    }
+
     processing_time = round(time.time() - start_time, 1)
     logger.info(f"Analysis complete in {processing_time}s")
 
@@ -197,4 +232,6 @@ def run_analysis(
         "phase_frames": phase_frames,
         "video_urls": video_urls,
         "reference_video_urls": ref_video_urls,
+        "user_phase_landmarks": user_phase_landmarks,
+        "reference_phase_landmarks": reference_phase_landmarks,
     }
