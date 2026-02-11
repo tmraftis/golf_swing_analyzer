@@ -26,3 +26,31 @@ export interface UploadResponse {
   message?: string;
   detail?: string;
 }
+
+// --- Analysis types ---
+
+export interface TopDifference {
+  rank: number;
+  angle_name: string;
+  phase: string;
+  view: string;
+  user_value: number;
+  reference_value: number;
+  delta: number;
+  severity: "major" | "moderate" | "minor";
+  title: string;
+  description: string;
+  coaching_tip: string;
+}
+
+export interface AnalysisResponse {
+  status: string;
+  upload_id: string;
+  swing_type: string;
+  processing_time_sec: number;
+  user_angles: Record<string, unknown>;
+  reference_angles: Record<string, unknown>;
+  deltas: Record<string, unknown>;
+  top_differences: TopDifference[];
+  phase_frames: Record<string, unknown>;
+}

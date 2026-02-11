@@ -57,5 +57,5 @@ async def upload_videos(
                 content_type=video_fo.content_type or "video/mp4",
             ),
         },
-        message="Videos uploaded successfully. Analysis will be available in Phase 2.",
+        message="Videos uploaded successfully. Call POST /api/analyze/{upload_id} to run analysis.",
     )
