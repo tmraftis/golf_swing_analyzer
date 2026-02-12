@@ -10,28 +10,36 @@ _WRAPAROUND_ANGLES = {"shoulder_line_angle", "hip_line_angle"}
 
 # Weights for ranking angle importance.
 # Higher weight = more significant when determining top faults.
+# Only includes angles that survive the _EXCLUDE_ANGLES_FROM_RANKING filter.
 ANGLE_WEIGHTS = {
-    ("lead_arm_torso", "top"): 1.5,
+    # Spine angle maintenance is the #1 DTL metric
     ("spine_angle_dtl", "impact"): 1.5,
-    ("x_factor", "top"): 1.3,
-    ("shoulder_line_angle", "top"): 1.2,
-    ("shoulder_line_angle", "impact"): 1.2,
-    ("spine_tilt_fo", "impact"): 1.2,
-    ("right_elbow", "top"): 1.1,
-    ("left_elbow", "impact"): 1.1,
+    ("spine_angle_dtl", "top"): 1.3,
+    # Lead arm extension / backswing arc
+    ("lead_arm_torso", "top"): 1.5,
+    ("lead_arm_torso", "impact"): 1.2,
+    # Spine tilt at impact (reverse spine angle = injury risk)
+    ("spine_tilt_fo", "impact"): 1.3,
+    # Elbow angles — key swing plane indicators
+    ("right_elbow", "top"): 1.2,
+    ("left_elbow", "impact"): 1.3,
+    # Knee flex — sway and power transfer indicators
+    ("right_knee_flex", "top"): 1.2,
+    ("right_knee_flex", "address"): 1.1,
+    ("left_knee_flex", "impact"): 1.1,
 }
 
 # Minimum absolute delta (degrees) to consider a difference significant.
 # Deltas below this floor are filtered out to prevent noise from surfacing.
 MIN_DELTA_DEGREES = 5
 
-# Angle/phase combinations to exclude from ranking.
-# These are unreliable due to 2D projection artifacts (e.g., atan2 line
-# angles at follow-through where the body is fully rotated away from camera).
-_EXCLUDE_FROM_RANKING = {
-    ("shoulder_line_angle", "follow_through"),
-    ("hip_line_angle", "follow_through"),
-}
+# Angles to exclude from top-3 ranking entirely.
+# shoulder_line_angle / hip_line_angle measure 2D line tilt from horizontal,
+# NOT true 3D rotational turn. x_factor is derived from these two tilts.
+# These are misleading as top recommendations because golfers expect rotation
+# metrics but get line-angle artifacts. They still appear in the angle table
+# for informational purposes — just not in the ranked coaching feedback.
+_EXCLUDE_ANGLES_FROM_RANKING = {"shoulder_line_angle", "hip_line_angle", "x_factor"}
 
 
 def compute_deltas(user_angles: dict, ref_angles: dict) -> dict:
@@ -96,7 +104,7 @@ def rank_differences(
             for angle_name, delta in phase_deltas.items():
                 if abs(delta) < MIN_DELTA_DEGREES:
                     continue
-                if (angle_name, phase) in _EXCLUDE_FROM_RANKING:
+                if angle_name in _EXCLUDE_ANGLES_FROM_RANKING:
                     continue
 
                 weight = ANGLE_WEIGHTS.get((angle_name, phase), 1.0)

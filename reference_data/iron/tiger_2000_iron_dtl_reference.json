@@ -27,10 +27,8 @@
       "description": "Setup position, club grounded behind ball",
       "angles": {
         "spine_angle": 18.9,
-        "lead_arm_torso": 9.5,
         "trail_arm_torso": 19.5,
         "right_elbow": 172.6,
-        "left_elbow": 165.3,
         "right_knee_flex": 166.3,
         "right_wrist_cock": 178.0
       },
@@ -352,11 +350,8 @@
       "angles": {
         "spine_angle": 8.4,
         "lead_arm_torso": 79.7,
-        "trail_arm_torso": 114.8,
-        "right_elbow": 135.9,
         "left_elbow": 81.4,
-        "right_knee_flex": 171.2,
-        "right_wrist_cock": 164.3
+        "right_knee_flex": 171.2
       },
       "shoulder_hip_geometry": {
         "shoulder_width": 0.0381,

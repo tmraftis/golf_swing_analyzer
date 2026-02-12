@@ -345,11 +345,8 @@
         "hip_line_angle": 170.3,
         "x_factor": -19.3,
         "spine_tilt": -30.6,
-        "lead_arm_torso": 84.0,
         "right_knee_flex": 140.2,
-        "left_knee_flex": 168.5,
-        "right_elbow": 57.7,
-        "left_elbow": 69.9
+        "right_elbow": 57.7
       },
       "key_landmarks": {
         "left_shoulder": {
