@@ -408,27 +408,32 @@ Differences are ranked using **weighted absolute deltas**. Biomechanically impor
 
 | Angle + Phase | Weight |
 |--------------|--------|
+| Spine angle (DTL) @ impact | 1.5x |
 | Lead arm-torso @ top | 1.5x |
-| Spine angle @ impact | 1.5x |
-| X-factor @ top | 1.3x |
-| Shoulder line @ top/impact | 1.2x |
-| Spine tilt @ impact | 1.2x |
-| Right elbow @ top | 1.1x |
-| Left elbow @ impact | 1.1x |
+| Spine angle (DTL) @ top | 1.3x |
+| Spine tilt (FO) @ impact | 1.3x |
+| Left elbow @ impact | 1.3x |
+| Lead arm-torso @ impact | 1.2x |
+| Right elbow @ top | 1.2x |
+| Right knee flex @ top | 1.2x |
+| Right knee flex @ address | 1.1x |
+| Left knee flex @ impact | 1.1x |
 | All others | 1.0x |
+
+**Excluded from ranking:** `shoulder_line_angle`, `hip_line_angle`, and `x_factor` are excluded from the top-3 recommendations. These measure 2D line tilt from horizontal, not true 3D rotation, and produce misleading coaching advice. They still appear in the angle comparison table for informational purposes.
 
 The top 3 differences are selected with **view balance** — when both views are analyzed, no more than 2 from the same camera angle; when a single view is analyzed, all 3 can come from that view.
 
 ### Feedback Engine
 
-16 fault rules map specific angle/phase/view combinations to coaching feedback. Each rule includes:
+26 directional fault rules map specific angle/phase/view/direction combinations to coaching feedback. Every rule has explicit `min_delta` or `max_delta` thresholds — no catch-all rules. Each angle/phase pair has separate "too much" and "too little" rules with distinct coaching text. Each rule includes:
 
 - **Severity** — major, moderate, or minor
-- **Title** — human-readable fault name (e.g., "Flying Right Elbow")
-- **Description** — templated text with user/reference values
-- **Coaching tip** — actionable drill or practice suggestion
+- **Title** — human-readable fault name (e.g., "Early Extension (Loss of Posture)")
+- **Description** — templated text with user/reference values and directional context
+- **Coaching tip** — actionable drill or practice suggestion specific to the direction of the fault
 
-Rules without specific thresholds use per-view catch-all triggers: DTL at `abs(delta) > 8°`, face-on at `abs(delta) > 15°` (face-on angles are noisier due to 2D projection). A minimum delta floor of 5° filters noise before ranking. Angles from low-visibility landmarks (< 0.3) are skipped entirely. A generic fallback handles angles without dedicated rules.
+A minimum delta floor of 5° filters noise before ranking. Angles from low-visibility landmarks (< 0.3) are skipped entirely. A directional generic fallback handles angles without dedicated rules (tells the user which way they're off and by how much).
 
 ---
 
@@ -455,7 +460,7 @@ The `reference_data/iron/` directory contains pre-computed Tiger Woods 2000 iron
 | View | Key angles |
 |------|-----------|
 | **DTL** (down-the-line) | Spine angle (forward bend), lead/trail arm-torso, elbow angles, knee flex, wrist cock, shoulder-hip geometry |
-| **FO** (face-on) | Shoulder line angle, hip line angle, X-factor (shoulder-hip separation), spine tilt, knee flex (both legs), elbow angles |
+| **FO** (face-on) | Shoulder tilt, hip tilt, shoulder-hip tilt gap, spine tilt, knee flex (both legs), elbow angles |
 
 ### Tiger reference summary
 
@@ -566,7 +571,7 @@ python scripts/build_reference_json.py
   - Golf-specific angle calculation at each phase
   - Tiger Woods 2000 reference data loading with angle name mapping
   - Weighted delta computation and significance ranking
-  - Rule-based coaching feedback engine (18 fault rules)
+  - Rule-based coaching feedback engine (26 directional fault rules)
 - **API endpoints:**
   - `POST /api/analyze/{upload_id}` — runs full pipeline (~30-50s), returns results
   - `GET /api/analysis/{upload_id}` — retrieves cached results
@@ -663,7 +668,7 @@ python scripts/build_reference_json.py
 
 ### Phase 4 remaining
 
-- **Angle calculation & feedback quality improvements** (see [Known Issues](#known-issues--angle-calculation-audit) below)
+- ~~**Angle calculation & feedback quality improvements**~~ — Done: FO tilt angles excluded from ranking, all catch-all rules replaced with 26 directional rules, reference data rebuilt with visibility filtering, angle weights re-tuned, frontend labels corrected
 - Drill content curation and expanded coaching tips
 - Onboarding flow and polish
 - QA and edge case handling
@@ -683,47 +688,23 @@ python scripts/build_reference_json.py
 
 ## Known Issues — Angle Calculation Audit
 
-A thorough audit of the angle calculation pipeline found that the **core math is correct** (geometry functions, coordinate transforms, reference data generation) but several issues cause the **top 3 recommendations to feel off**. The system is internally consistent (same code computes user and reference angles), so relative comparisons are valid, but the feedback quality suffers from the problems below.
+A thorough audit of the angle calculation pipeline found that the **core math is correct** (geometry functions, coordinate transforms, reference data generation). The system is internally consistent (same code computes user and reference angles), so relative comparisons are valid. Most feedback quality issues have been resolved.
 
-### Issue 1: Face-On "Rotation" Angles Are Actually Line Tilts (HIGH)
+### ~~Issue 1: Face-On "Rotation" Angles Are Actually Line Tilts~~ (FIXED)
 
-**Files:** `scripts/calculate_angles.py` — `calc_shoulder_turn_fo()`, `calc_hip_turn_fo()`
+`shoulder_line_angle`, `hip_line_angle`, and `x_factor` measure 2D line tilt from horizontal, not true 3D rotation. These are now **excluded from the top-3 ranking** entirely — they still appear in the angle comparison table for informational purposes but no longer drive coaching recommendations. Frontend labels renamed from "Shoulder Turn" / "Hip Rotation" / "X-Factor" to "Shoulder Tilt" / "Hip Tilt" / "Shoulder-Hip Tilt Gap" to accurately describe what they measure.
 
-`shoulder_line_angle` and `hip_line_angle` use `atan2(dy, dx)` to measure the **tilt** of the shoulder/hip line relative to horizontal in the 2D face-on image. This is fundamentally different from the **rotational turn** these names suggest. Tiger's reference X-factor at top is -2.2° (line tilt difference), whereas real golf instruction cites ~55° (3D rotational separation). The values are meaningless to any golfer who knows what "shoulder turn" or "X-factor" means.
+### ~~Issue 2: Too Many Rules Fire on Any Delta~~ (FIXED)
 
-**Impact:** Coaching titles like "Incomplete Shoulder Turn" and "Shoulder-Hip Separation Off" fire based on line tilt deltas, not actual rotation. The tips ("feel your back face the target") describe rotation — but the measurement doesn't capture rotation from this view.
-
-**Fix options:**
-- Rename these angles to reflect what they actually measure (e.g., "Shoulder Line Tilt", "Hip Line Tilt", "Shoulder-Hip Tilt Separation")
-- Update fault rule titles and coaching descriptions to match the 2D measurement
-- Or: remove these from the top-3 ranking entirely and focus on angles that are well-captured in 2D (elbow flex, knee flex, spine angle, arm-torso separation)
-
-### Issue 2: Too Many Rules Fire on Any Delta > 8° (HIGH)
-
-**File:** `backend/app/pipeline/feedback_engine.py` — `_rule_matches()`, `FAULT_RULES`
-
-9 out of 16 fault rules have `min_delta=None, max_delta=None`, which means they trigger on **any** absolute delta > 8°. Face-on angles are inherently noisier (small body movements create large apparent angle changes in 2D projection), so an 8° threshold is too aggressive. Almost every swing will surface multiple face-on "faults" even if the golfer has great form.
-
-**Affected rules:** Incomplete Shoulder Turn, Hip Rotation Timing, Shoulder-Hip Separation, Reverse Spine Angle, Arm-Body Connection Lost, Lead Leg Position, and Spine Angle Change at Impact (DTL).
-
-**Fix options:**
-- Raise the default threshold to 12-15° for face-on rules
-- Add angle-specific thresholds instead of using `None/None` catch-all
-- Add a minimum absolute delta floor (e.g., 5°) in `rank_differences()` so trivial deltas never surface
+All 9 catch-all fault rules (`min_delta=None, max_delta=None`) have been replaced with **26 directional rules**, each with explicit thresholds. Every angle/phase pair now has separate "too much" and "too little" rules with distinct coaching text (e.g., "Early Extension" vs "Excessive Forward Bend" for spine angle at impact). No catch-all threshold logic remains.
 
 ### ~~Issue 3: No Minimum Delta Floor for Ranking~~ (FIXED)
 
 A `MIN_DELTA_DEGREES = 5` floor was added to `rank_differences()` — deltas below 5° are filtered out before ranking.
 
-### Issue 4: Low-Visibility Landmarks Feed Into Rankings (MEDIUM)
+### ~~Issue 4: Low-Visibility Landmarks Feed Into Rankings~~ (FIXED)
 
-**File:** `scripts/calculate_angles.py`
-
-In the DTL reference data, left-side landmarks have visibility as low as 0.11 (left_elbow at address) and 0.11 (left_knee at address) due to body occlusion. Angles computed from these landmarks are unreliable. The only visibility check in the angle calculator is for `right_wrist_cock` (requires > 0.4). All other angles use landmarks regardless of visibility.
-
-Both user and reference are affected equally (so deltas are at least consistently noisy), but junk angles can still surface as top recommendations.
-
-**Fix:** Add a visibility threshold (e.g., 0.3) to all angle calculations. If any required landmark is below threshold, skip that angle for that phase. Propagate `None` values through the delta computation.
+All angle calculations now use `get_landmark_2d()` with a `VISIBILITY_THRESHOLD = 0.3` — landmarks below this threshold return `None`, causing the angle to be skipped. The Tiger reference data has been rebuilt with visibility filtering, dropping unreliable angles (e.g., DTL `left_elbow` at address where visibility was 0.167, DTL `right_elbow` at follow-through where visibility was 0.121, FO `left_elbow` at follow-through where visibility was 0.091). Both `build_reference_json.py` and `calculate_angles.py` use the same threshold, ensuring consistent handling.
 
 ### Issue 5: Camera Orientation Assumption (LOW)
 
@@ -735,33 +716,17 @@ The sign of `spine_tilt_fo` depends on which side of the golfer the face-on came
 
 ### ~~Issue 6: atan2 Discontinuity Near 180°~~ (FIXED)
 
-**Files:** `backend/app/pipeline/comparison_engine.py`, `scripts/calculate_angles.py`
-
-The comparison engine now uses wraparound-aware angular difference `(d + 180) % 360 - 180` for `shoulder_line_angle` and `hip_line_angle`. The X-factor calculation (`shoulder_angle - hip_angle`) also uses this normalization. A user value of -169° vs Tiger's 177° now correctly computes as a 14° difference instead of 346°.
+The comparison engine now uses wraparound-aware angular difference `(d + 180) % 360 - 180` for `shoulder_line_angle` and `hip_line_angle`. The X-factor calculation also uses this normalization.
 
 ### ~~Issue 7: IMAGE Mode Produces Noisier Velocity Signal~~ (FIXED)
 
-**Files:** `modal_app/landmark_worker.py`, `scripts/detect_phases.py`
+Modal switched to `RunningMode.IMAGE` for deterministic extraction. Noisier velocity signal fixed with adaptive still_threshold, time-based minimum stillness, Y-minimum follow-through detection, and impact refinement.
 
-Modal was switched from `RunningMode.VIDEO` to `RunningMode.IMAGE` to fix non-deterministic extraction (VIDEO mode's temporal tracking state caused the same video to produce wildly different detection rates between runs — GitHub issue #5253). IMAGE mode processes each frame independently, giving deterministic results and eliminating cascade tracking failures.
+### Remaining Fix Priority
 
-IMAGE mode produces noisier frame-to-frame landmark positions (no temporal smoothing), which increased the velocity signal and broke the fixed `still_threshold`. Fixed with three changes:
-
-1. **Adaptive still_threshold** — auto-calibrated per video using `max(base_threshold, p25_velocity * 3.5)`. DTL (noisier) gets ~0.002, FO (cleaner) stays at base 0.001.
-2. **Time-based minimum stillness in `_has_preceding_address()`** — increased from 3 frames to `max(3, fps * 0.5)` (0.5s), preventing brief waggle pauses from passing as address.
-3. **Follow-through uses Y-minimum first** — local minimum of Y (hands at highest point) is more robust than velocity-settle with IMAGE mode noise. Velocity-settle is now fallback only.
-4. **Impact refinement** — after velocity settle finds a candidate, looks in a 5-frame window for the frame closest to address Y level (the actual ball-strike).
-
-### Recommended Fix Priority
-
-1. ~~**Add minimum delta floor** in `rank_differences()`~~ — Done (MIN_DELTA_DEGREES = 5)
-2. **Raise face-on thresholds** — change `None/None` rules to require larger deltas (12-15°)
-3. **Add visibility filtering** to angle calculations — skip unreliable landmarks
-4. **Rename face-on rotation angles** — update titles/descriptions to match what's actually measured, or remove from top-3 ranking
-5. **Left-handed golfer support** — future enhancement
-6. ~~**Fix atan2 wraparound**~~ — Done (wraparound-aware deltas in comparison engine + X-factor calculation)
-7. ~~**Fix Modal non-determinism**~~ — Done (switched to `RunningMode.IMAGE`, added retry logic, fixed file extension detection)
-8. ~~**Calibrate phase detection for IMAGE mode**~~ — Done (adaptive threshold, time-based stillness, Y-minimum follow-through, impact refinement)
+1. **Left-handed golfer support** — future enhancement
+2. **Expand coaching drill content** — more drills per fault beyond the current single tip
+3. **Onboarding flow** — tutorial pop-up on first login
 
 ---
 

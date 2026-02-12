@@ -20,8 +20,13 @@ from calculate_angles import (
     calc_forward_bend_dtl, calc_lead_arm_torso_angle, calc_trail_arm_torso_angle,
     calc_elbow_angle, calc_knee_flex, calc_wrist_cock, calc_shoulder_turn_dtl,
     calc_shoulder_turn_fo, calc_hip_turn_fo, calc_spine_tilt,
-    calc_shoulder_hip_separation_fo, get_landmark_2d,
+    calc_shoulder_hip_separation_fo, get_landmark_2d, VISIBILITY_THRESHOLD,
 )
+
+
+def _safe_round(val, ndigits=1):
+    """Round a value if not None, otherwise return None."""
+    return round(val, ndigits) if val is not None else None
 
 
 def build_dtl_reference(landmarks_data):
@@ -47,20 +52,18 @@ def build_dtl_reference(landmarks_data):
                 "visibility": lm["visibility"],
             }
 
-        # Compute angles
-        angles = {
-            "spine_angle": round(calc_forward_bend_dtl(frame_data), 1),
-            "lead_arm_torso": round(calc_lead_arm_torso_angle(frame_data), 1),
-            "trail_arm_torso": round(calc_trail_arm_torso_angle(frame_data), 1),
-            "right_elbow": round(calc_elbow_angle(frame_data, "right"), 1),
-            "left_elbow": round(calc_elbow_angle(frame_data, "left"), 1),
-            "right_knee_flex": round(calc_knee_flex(frame_data, "right"), 1),
+        # Compute angles (visibility filtering via get_landmark_2d in each calc_*)
+        raw_angles = {
+            "spine_angle": _safe_round(calc_forward_bend_dtl(frame_data)),
+            "lead_arm_torso": _safe_round(calc_lead_arm_torso_angle(frame_data)),
+            "trail_arm_torso": _safe_round(calc_trail_arm_torso_angle(frame_data)),
+            "right_elbow": _safe_round(calc_elbow_angle(frame_data, "right")),
+            "left_elbow": _safe_round(calc_elbow_angle(frame_data, "left")),
+            "right_knee_flex": _safe_round(calc_knee_flex(frame_data, "right")),
+            "right_wrist_cock": _safe_round(calc_wrist_cock(frame_data, "right")),
         }
-
-        # Add wrist cock if visibility is sufficient
-        rw_vis = frame_data["landmarks"]["right_wrist"]["visibility"]
-        if rw_vis > 0.4:
-            angles["right_wrist_cock"] = round(calc_wrist_cock(frame_data, "right"), 1)
+        # Filter out None values (low-visibility landmarks)
+        angles = {k: v for k, v in raw_angles.items() if v is not None}
 
         sh_info = calc_shoulder_turn_dtl(frame_data)
 
@@ -124,18 +127,20 @@ def build_fo_reference(landmarks_data):
                 "visibility": lm["visibility"],
             }
 
-        # Compute angles
-        angles = {
-            "shoulder_line_angle": round(calc_shoulder_turn_fo(frame_data), 1),
-            "hip_line_angle": round(calc_hip_turn_fo(frame_data), 1),
-            "x_factor": round(calc_shoulder_hip_separation_fo(frame_data), 1),
-            "spine_tilt": round(calc_spine_tilt(frame_data), 1),
-            "lead_arm_torso": round(calc_lead_arm_torso_angle(frame_data), 1),
-            "right_knee_flex": round(calc_knee_flex(frame_data, "right"), 1),
-            "left_knee_flex": round(calc_knee_flex(frame_data, "left"), 1),
-            "right_elbow": round(calc_elbow_angle(frame_data, "right"), 1),
-            "left_elbow": round(calc_elbow_angle(frame_data, "left"), 1),
+        # Compute angles (visibility filtering via get_landmark_2d in each calc_*)
+        raw_angles = {
+            "shoulder_line_angle": _safe_round(calc_shoulder_turn_fo(frame_data)),
+            "hip_line_angle": _safe_round(calc_hip_turn_fo(frame_data)),
+            "x_factor": _safe_round(calc_shoulder_hip_separation_fo(frame_data)),
+            "spine_tilt": _safe_round(calc_spine_tilt(frame_data)),
+            "lead_arm_torso": _safe_round(calc_lead_arm_torso_angle(frame_data)),
+            "right_knee_flex": _safe_round(calc_knee_flex(frame_data, "right")),
+            "left_knee_flex": _safe_round(calc_knee_flex(frame_data, "left")),
+            "right_elbow": _safe_round(calc_elbow_angle(frame_data, "right")),
+            "left_elbow": _safe_round(calc_elbow_angle(frame_data, "left")),
         }
+        # Filter out None values (low-visibility landmarks)
+        angles = {k: v for k, v in raw_angles.items() if v is not None}
 
         phase_entry = {
             "swing_type": "iron",
