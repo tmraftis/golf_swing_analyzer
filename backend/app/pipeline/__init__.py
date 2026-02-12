@@ -45,6 +45,33 @@ def _extract_phase_landmarks(landmarks_data: dict, phases: dict) -> dict:
     return result
 
 
+def _extract_all_frame_landmarks(landmarks_data: dict) -> list:
+    """Extract golf-relevant joint positions for ALL detected frames.
+
+    Returns a list of {timestamp_sec, landmarks} dicts, sorted by time.
+    Only includes frames where pose was successfully detected.
+    Used for frame-by-frame skeleton overlay during video playback.
+    """
+    frames = []
+    for frame_data in landmarks_data["frames"]:
+        if not frame_data.get("detected"):
+            continue
+        lm = frame_data["landmarks"]
+        frame_lm = {}
+        for joint_name in GOLF_LANDMARKS:
+            if joint_name in lm:
+                frame_lm[joint_name] = {
+                    "x": lm[joint_name]["x"],
+                    "y": lm[joint_name]["y"],
+                }
+        if frame_lm:
+            frames.append({
+                "t": round(frame_data["timestamp_sec"], 4),
+                "lm": frame_lm,
+            })
+    return frames
+
+
 def _find_video(upload_dir: str, upload_id: str, view: str) -> str:
     """Find the uploaded video file for a given upload_id and view.
 
@@ -199,6 +226,12 @@ def run_analysis(
         "fo": {phase: data.get("landmarks", {}) for phase, data in fo_ref.items()},
     }
 
+    # Step 4c: Extract ALL frame landmarks for continuous skeleton playback
+    user_all_landmarks = {
+        "dtl": _extract_all_frame_landmarks(dtl_landmarks),
+        "fo": _extract_all_frame_landmarks(fo_landmarks),
+    }
+
     processing_time = round(time.time() - start_time, 1)
     logger.info(f"Analysis complete in {processing_time}s")
 
@@ -234,4 +267,5 @@ def run_analysis(
         "reference_video_urls": ref_video_urls,
         "user_phase_landmarks": user_phase_landmarks,
         "reference_phase_landmarks": reference_phase_landmarks,
+        "user_all_landmarks": user_all_landmarks,
     }

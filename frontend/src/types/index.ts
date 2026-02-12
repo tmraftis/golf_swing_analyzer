@@ -78,6 +78,17 @@ export interface PhaseLandmarkData {
   fo: ViewPhaseLandmarks;
 }
 
+// Frame-by-frame landmarks for continuous skeleton playback
+export interface FrameLandmark {
+  t: number; // timestamp_sec
+  lm: PhaseLandmarks; // joint positions at this frame
+}
+
+export interface AllLandmarkData {
+  dtl: FrameLandmark[];
+  fo: FrameLandmark[];
+}
+
 // --- Analysis types ---
 
 export interface PhaseAngles {
@@ -136,4 +147,5 @@ export interface AnalysisResponse {
   reference_video_urls?: VideoUrls;
   user_phase_landmarks?: PhaseLandmarkData;
   reference_phase_landmarks?: PhaseLandmarkData;
+  user_all_landmarks?: AllLandmarkData;
 }

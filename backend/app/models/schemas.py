@@ -50,3 +50,4 @@ class AnalysisResponse(BaseModel):
     reference_video_urls: dict[str, str] | None = None
     user_phase_landmarks: dict | None = None
     reference_phase_landmarks: dict | None = None
+    user_all_landmarks: dict | None = None

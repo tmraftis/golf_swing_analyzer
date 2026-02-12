@@ -57,6 +57,7 @@ GOLF_LANDMARKS = {
     gpu="T4",
     timeout=120,
     retries=1,
+    min_containers=1,
 )
 def extract_landmarks(
     video_bytes: bytes,

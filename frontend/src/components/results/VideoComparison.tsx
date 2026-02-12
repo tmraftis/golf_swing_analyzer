@@ -7,6 +7,7 @@ import type {
   AngleData,
   SwingPhase,
   PhaseLandmarkData,
+  AllLandmarkData,
 } from "@/types";
 import { SWING_PHASES, PHASE_LABELS } from "@/types";
 import { getVideoUrl } from "@/lib/api";
@@ -25,6 +26,7 @@ interface VideoComparisonProps {
   onPhaseChange: (phase: SwingPhase) => void;
   userPhaseLandmarks?: PhaseLandmarkData;
   referencePhaseLandmarks?: PhaseLandmarkData;
+  userAllLandmarks?: AllLandmarkData;
 }
 
 export default function VideoComparison({
@@ -37,6 +39,7 @@ export default function VideoComparison({
   onPhaseChange,
   userPhaseLandmarks,
   referencePhaseLandmarks,
+  userAllLandmarks,
 }: VideoComparisonProps) {
   // Refs for all 4 videos: user-dtl, user-fo, ref-dtl, ref-fo
   const userVideoRefs = useRef<Record<ViewKey, HTMLVideoElement | null>>({
@@ -55,10 +58,11 @@ export default function VideoComparison({
 
   // Skeleton overlay state
   const [showSkeleton, setShowSkeleton] = useState(false);
-  const skeletonVisible = showSkeleton && !isPlaying;
   const userLandmarks = userPhaseLandmarks?.[activeView]?.[activePhase];
   const refLandmarks = referencePhaseLandmarks?.[activeView]?.[activePhase];
   const hasLandmarkData = !!(userPhaseLandmarks || referencePhaseLandmarks);
+  // Frame-by-frame landmarks for the active view (user video only)
+  const userFrameLandmarks = userAllLandmarks?.[activeView];
 
   // Helper to get the active video elements
   const getActiveUserVideo = useCallback(
@@ -218,7 +222,9 @@ export default function VideoComparison({
             <SkeletonOverlay
               videoRef={userVideoRefs.current[activeView as ViewKey]}
               landmarks={userLandmarks}
-              visible={skeletonVisible}
+              allFrameLandmarks={userFrameLandmarks}
+              visible={showSkeleton}
+              isPlaying={isPlaying}
             />
           </div>
         </div>
@@ -246,7 +252,8 @@ export default function VideoComparison({
             <SkeletonOverlay
               videoRef={refVideoRefs.current[activeView as ViewKey]}
               landmarks={refLandmarks}
-              visible={skeletonVisible}
+              visible={showSkeleton && !isPlaying}
+              isPlaying={isPlaying}
             />
           </div>
         </div>

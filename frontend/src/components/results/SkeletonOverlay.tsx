@@ -1,12 +1,17 @@
 "use client";
 
-import { useRef, useEffect } from "react";
-import type { PhaseLandmarks, LandmarkPoint } from "@/types";
+import { useRef, useEffect, useCallback } from "react";
+import type { PhaseLandmarks, LandmarkPoint, FrameLandmark } from "@/types";
 
 interface SkeletonOverlayProps {
   videoRef: HTMLVideoElement | null;
+  /** Static landmarks for a single phase (used when paused or no frame data) */
   landmarks: PhaseLandmarks | undefined;
+  /** All frame landmarks for continuous playback sync */
+  allFrameLandmarks?: FrameLandmark[];
   visible: boolean;
+  /** Whether the video is currently playing */
+  isPlaying: boolean;
 }
 
 // Body connections for the skeleton (12 lines)
@@ -132,22 +137,56 @@ function drawSkeleton(
   }
 }
 
+/**
+ * Binary search for the nearest frame landmark by timestamp.
+ * Returns the landmark data for the frame closest to `time`.
+ */
+function findNearestFrame(
+  frames: FrameLandmark[],
+  time: number
+): PhaseLandmarks | null {
+  if (frames.length === 0) return null;
+
+  let lo = 0;
+  let hi = frames.length - 1;
+
+  // Binary search for closest timestamp
+  while (lo < hi) {
+    const mid = (lo + hi) >> 1;
+    if (frames[mid].t < time) {
+      lo = mid + 1;
+    } else {
+      hi = mid;
+    }
+  }
+
+  // Check if the previous frame is actually closer
+  if (lo > 0 && Math.abs(frames[lo - 1].t - time) < Math.abs(frames[lo].t - time)) {
+    lo = lo - 1;
+  }
+
+  return frames[lo].lm;
+}
+
 export default function SkeletonOverlay({
   videoRef,
   landmarks,
+  allFrameLandmarks,
   visible,
+  isPlaying,
 }: SkeletonOverlayProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const rafIdRef = useRef<number>(0);
 
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas || !videoRef) return;
+  // Core draw function that renders a given set of landmarks
+  const drawFrame = useCallback(
+    (currentLandmarks: PhaseLandmarks | null | undefined) => {
+      const canvas = canvasRef.current;
+      if (!canvas || !videoRef) return;
 
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
 
-    const draw = () => {
-      // Match canvas resolution to its CSS display size
       const dpr = window.devicePixelRatio || 1;
       const displayWidth = videoRef.clientWidth;
       const displayHeight = videoRef.clientHeight;
@@ -158,10 +197,56 @@ export default function SkeletonOverlay({
 
       ctx.clearRect(0, 0, displayWidth, displayHeight);
 
-      if (visible && landmarks && Object.keys(landmarks).length > 0) {
+      if (
+        visible &&
+        currentLandmarks &&
+        Object.keys(currentLandmarks).length > 0
+      ) {
         const rect = getVideoRenderRect(videoRef);
-        drawSkeleton(ctx, landmarks, rect);
+        drawSkeleton(ctx, currentLandmarks, rect);
       }
+    },
+    [videoRef, visible]
+  );
+
+  // Continuous playback mode: sync skeleton to video currentTime via rAF
+  useEffect(() => {
+    if (
+      !visible ||
+      !isPlaying ||
+      !allFrameLandmarks ||
+      allFrameLandmarks.length === 0 ||
+      !videoRef
+    ) {
+      return;
+    }
+
+    const tick = () => {
+      const currentTime = videoRef.currentTime;
+      const frameLandmarks = findNearestFrame(allFrameLandmarks, currentTime);
+      drawFrame(frameLandmarks);
+      rafIdRef.current = requestAnimationFrame(tick);
+    };
+
+    rafIdRef.current = requestAnimationFrame(tick);
+
+    return () => {
+      cancelAnimationFrame(rafIdRef.current);
+    };
+  }, [visible, isPlaying, allFrameLandmarks, videoRef, drawFrame]);
+
+  // Static mode: draw phase landmarks when paused or no frame data available
+  useEffect(() => {
+    // Only draw static landmarks when NOT in continuous playback mode
+    if (isPlaying && allFrameLandmarks && allFrameLandmarks.length > 0) {
+      return; // rAF loop handles this
+    }
+
+    const canvas = canvasRef.current;
+    if (!canvas || !videoRef) return;
+
+    const draw = () => {
+      drawFrame(landmarks);
     };
 
     draw();
@@ -173,7 +258,7 @@ export default function SkeletonOverlay({
     return () => {
       resizeObserver.disconnect();
     };
-  }, [videoRef, landmarks, visible]);
+  }, [videoRef, landmarks, visible, isPlaying, allFrameLandmarks, drawFrame]);
 
   return (
     <canvas
