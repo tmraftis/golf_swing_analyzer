@@ -4,7 +4,7 @@
 
 Compare your golf swing to Tiger Woods' iconic 2000 iron swing using computer vision. Upload down-the-line (DTL) and face-on (FO) videos, and get back angle comparisons, top 3 faults, and drill recommendations — all in under 20 seconds with GPU acceleration.
 
-**Current status:** Phase 4 in progress. Upload videos, get AI-powered swing analysis with side-by-side video comparison against Tiger Woods, phase-by-phase navigation, angle comparison tables, and coaching feedback. Toggleable skeleton overlay tracks your body in real-time during video playback (frame-by-frame on user video, phase-only on Tiger). Phase frame images extracted server-side as JPEGs for instant phase/view switching with zero seek latency. GPU-accelerated landmark extraction via Modal runs both videos in parallel on T4 GPUs. Server-side video compression (ffmpeg H.264 ~4Mbps) reduces storage by ~73% and speeds up video streaming. Authentication via PropelAuth with Google OAuth and Magic Link sign-in — live in both local dev and production (`swingpure.ai`). V1 is iron-only; driver support is planned for a future release.
+**Current status:** Phase 4 in progress. Upload videos, get AI-powered swing analysis with side-by-side video comparison against Tiger Woods, phase-by-phase navigation, angle comparison tables, and coaching feedback. Toggleable skeleton overlay tracks your body in real-time during video playback (frame-by-frame on user video, phase-only on Tiger). Phase frame images extracted server-side as JPEGs for instant phase/view switching with zero seek latency. GPU-accelerated landmark extraction via Modal runs both videos in parallel on T4 GPUs. Server-side video compression (ffmpeg H.264 ~4Mbps) reduces storage by ~73% and speeds up video streaming. Authentication via PropelAuth with Google OAuth and Magic Link sign-in — live in both local dev and production (`swingpure.ai`). Phase detection now includes a swing window constraint to prevent post-swing walking from being misidentified as the backswing. Angle comparison uses wraparound-aware deltas for atan2-based angles (shoulder/hip line), fixing incorrect 346° deltas that should be ~14°. V1 is iron-only; driver support is planned for a future release.
 
 ---
 
@@ -424,14 +424,14 @@ The top 3 differences are selected with **view balance** — no more than 2 from
 
 ### Feedback Engine
 
-18 fault rules map specific angle/phase/view combinations to coaching feedback. Each rule includes:
+16 fault rules map specific angle/phase/view combinations to coaching feedback. Each rule includes:
 
 - **Severity** — major, moderate, or minor
 - **Title** — human-readable fault name (e.g., "Flying Right Elbow")
 - **Description** — templated text with user/reference values
 - **Coaching tip** — actionable drill or practice suggestion
 
-Rules without specific thresholds trigger when `abs(delta) > 8°`. A generic fallback handles angles without dedicated rules.
+Rules without specific thresholds use per-view catch-all triggers: DTL at `abs(delta) > 8°`, face-on at `abs(delta) > 15°` (face-on angles are noisier due to 2D projection). A minimum delta floor of 5° filters noise before ranking. Angles from low-visibility landmarks (< 0.3) are skipped entirely. A generic fallback handles angles without dedicated rules.
 
 ---
 
@@ -524,7 +524,9 @@ python scripts/build_reference_json.py
 - **`useReducer` for upload form state** — manages the multi-step flow (upload → analyzing → redirect) without a global store
 - **HTTP range requests for video serving** — FastAPI's StaticFiles doesn't support range requests, which browsers need for video seeking; custom streaming endpoint returns `206 Partial Content` with proper `Content-Range` headers
 - **Velocity-based phase detection** — more robust than Y-position thresholds; anchors on peak downswing speed (the most reliable signal in any swing video) and works backwards/forwards from there
+- **Swing window constraint** — phase detection limits the search to a 6-second window after the last still period (address), preventing post-swing walking/movement from being misidentified as the backswing; handles videos with long pre-shot routines and post-swing footage
 - **Visibility-weighted signal filtering** — MediaPipe landmark visibility below 0.4 treated as NaN to prevent tracking artifacts from corrupting phase detection, especially at video boundaries and during fast motion
+- **Wraparound-aware angle deltas** — shoulder/hip line angles computed via atan2 wrap at ±180°; comparison engine uses shortest angular distance `(d + 180) % 360 - 180` to avoid nonsensical 346° deltas when the actual difference is ~14°
 - **Video readiness tracking in React** — `loadeddata` event listeners ensure video seeking works even when metadata hasn't loaded yet; pending seeks are queued and executed once the video is ready
 - **Preloaded video views** — all 4 videos (user DTL, user FO, ref DTL, ref FO) are rendered simultaneously with `preload="auto"` and toggled via CSS visibility; switching between DTL and Face On is instant after initial load
 - **Modal GPU acceleration** — landmark extraction offloaded to Modal T4 GPUs, with both DTL and FO videos processed in parallel via `.spawn()` / `.get()`. Reduces extraction from ~50s (sequential CPU) to ~5-8s (parallel GPU). Automatic fallback to local CPU if Modal is unavailable.
@@ -590,6 +592,7 @@ python scripts/build_reference_json.py
 - **Video serving with HTTP range requests** — custom endpoint replaces StaticFiles, enabling instant video seeking in the browser
 - **Phase detection improvements:**
   - Velocity-based detection: anchors on peak downswing speed, backtracks to find top of backswing
+  - Swing window constraint: limits search to 6s after the last still period, preventing post-swing walking from being misidentified as the backswing
   - Visibility filtering: frames with low MediaPipe confidence (< 0.4) excluded from signal analysis
   - Address detection picks the most settled frame within the still period (highest Y / hands lowest)
   - Follow-through detection uses midpoint of the first settled period after impact
@@ -700,13 +703,9 @@ A thorough audit of the angle calculation pipeline found that the **core math is
 - Add angle-specific thresholds instead of using `None/None` catch-all
 - Add a minimum absolute delta floor (e.g., 5°) in `rank_differences()` so trivial deltas never surface
 
-### Issue 3: No Minimum Delta Floor for Ranking (MEDIUM)
+### ~~Issue 3: No Minimum Delta Floor for Ranking~~ (FIXED)
 
-**File:** `backend/app/pipeline/comparison_engine.py` — `rank_differences()`
-
-Even small, meaningless deltas (e.g., 9°) can become a "top 3" fault if they happen to be the largest weighted differences. There's no floor filter. A swing that closely matches Tiger could still get 3 "faults" that are essentially noise.
-
-**Fix:** Add a minimum threshold (e.g., `if abs(delta) < 5: continue`) in the ranking loop, or return fewer than 3 results when differences are minor.
+A `MIN_DELTA_DEGREES = 5` floor was added to `rank_differences()` — deltas below 5° are filtered out before ranking.
 
 ### Issue 4: Low-Visibility Landmarks Feed Into Rankings (MEDIUM)
 
@@ -726,21 +725,20 @@ The sign of `spine_tilt_fo` depends on which side of the golfer the face-on came
 
 **Fix for later:** Add left-handed golfer detection or a manual toggle.
 
-### Issue 6: atan2 Discontinuity Near 180° (LOW)
+### ~~Issue 6: atan2 Discontinuity Near 180°~~ (FIXED)
 
-**File:** `scripts/calculate_angles.py` — `calc_shoulder_turn_fo()`, `calc_hip_turn_fo()`
+**Files:** `backend/app/pipeline/comparison_engine.py`, `scripts/calculate_angles.py`
 
-The shoulder/hip line angles hover near 170-180°. If a user's line crosses the 180°/-180° boundary (unlikely during a normal swing), the delta would jump by ~360°. Theoretical edge case.
-
-**Fix for later:** Normalize angle differences to [-180, 180] range before computing deltas.
+The comparison engine now uses wraparound-aware angular difference `(d + 180) % 360 - 180` for `shoulder_line_angle` and `hip_line_angle`. The X-factor calculation (`shoulder_angle - hip_angle`) also uses this normalization. A user value of -169° vs Tiger's 177° now correctly computes as a 14° difference instead of 346°.
 
 ### Recommended Fix Priority
 
-1. **Add minimum delta floor** in `rank_differences()` — quick win, prevents noise from surfacing
+1. ~~**Add minimum delta floor** in `rank_differences()`~~ — Done (MIN_DELTA_DEGREES = 5)
 2. **Raise face-on thresholds** — change `None/None` rules to require larger deltas (12-15°)
 3. **Add visibility filtering** to angle calculations — skip unreliable landmarks
 4. **Rename face-on rotation angles** — update titles/descriptions to match what's actually measured, or remove from top-3 ranking
 5. **Left-handed golfer support** — future enhancement
+6. ~~**Fix atan2 wraparound**~~ — Done (wraparound-aware deltas in comparison engine + X-factor calculation)
 
 ---
 

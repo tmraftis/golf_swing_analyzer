@@ -51,9 +51,16 @@ def get_landmark(frame_data, name):
     return np.array([lm["x"], lm["y"], lm["z"]])
 
 
+# Minimum landmark visibility (0-1) to trust a landmark for angle calculation.
+# Landmarks below this threshold return None, causing the angle to be skipped.
+VISIBILITY_THRESHOLD = 0.3
+
+
 def get_landmark_2d(frame_data, name):
-    """Get (x, y) for a named landmark from a frame."""
+    """Get (x, y) for a named landmark from a frame, or None if low visibility."""
     lm = frame_data["landmarks"][name]
+    if lm.get("visibility", 1.0) < VISIBILITY_THRESHOLD:
+        return None
     return np.array([lm["x"], lm["y"]])
 
 
@@ -94,6 +101,8 @@ def calc_shoulder_turn_fo(frame_data):
     """
     ls = get_landmark_2d(frame_data, "left_shoulder")
     rs = get_landmark_2d(frame_data, "right_shoulder")
+    if ls is None or rs is None:
+        return None
 
     # Shoulder line vector
     shoulder_vec = rs - ls
@@ -116,6 +125,8 @@ def calc_shoulder_turn_dtl(frame_data):
     rs = get_landmark_2d(frame_data, "right_shoulder")
     lh = get_landmark_2d(frame_data, "left_hip")
     rh = get_landmark_2d(frame_data, "right_hip")
+    if ls is None or rs is None or lh is None or rh is None:
+        return None
 
     shoulder_mid = (ls + rs) / 2
     hip_mid = (lh + rh) / 2
@@ -143,6 +154,8 @@ def calc_hip_turn_fo(frame_data):
     """
     lh = get_landmark_2d(frame_data, "left_hip")
     rh = get_landmark_2d(frame_data, "right_hip")
+    if lh is None or rh is None:
+        return None
 
     hip_vec = rh - lh
     angle = math.degrees(math.atan2(hip_vec[1], hip_vec[0]))
@@ -161,6 +174,8 @@ def calc_spine_tilt(frame_data):
     rs = get_landmark_2d(frame_data, "right_shoulder")
     lh = get_landmark_2d(frame_data, "left_hip")
     rh = get_landmark_2d(frame_data, "right_hip")
+    if ls is None or rs is None or lh is None or rh is None:
+        return None
 
     shoulder_mid = (ls + rs) / 2
     hip_mid = (lh + rh) / 2
@@ -188,6 +203,8 @@ def calc_lead_arm_torso_angle(frame_data, view="dtl"):
     ls = get_landmark_2d(frame_data, "left_shoulder")
     le = get_landmark_2d(frame_data, "left_elbow")
     lh = get_landmark_2d(frame_data, "left_hip")
+    if ls is None or le is None or lh is None:
+        return None
 
     return round(angle_at_joint(le, ls, lh), 1)
 
@@ -200,6 +217,8 @@ def calc_trail_arm_torso_angle(frame_data):
     rs = get_landmark_2d(frame_data, "right_shoulder")
     re = get_landmark_2d(frame_data, "right_elbow")
     rh = get_landmark_2d(frame_data, "right_hip")
+    if rs is None or re is None or rh is None:
+        return None
 
     return round(angle_at_joint(re, rs, rh), 1)
 
@@ -217,6 +236,8 @@ def calc_wrist_cock(frame_data, side="left"):
         elbow = get_landmark_2d(frame_data, "right_elbow")
         wrist = get_landmark_2d(frame_data, "right_wrist")
         index = get_landmark_2d(frame_data, "right_index")
+    if elbow is None or wrist is None or index is None:
+        return None
 
     return round(angle_at_joint(elbow, wrist, index), 1)
 
@@ -234,6 +255,8 @@ def calc_knee_flex(frame_data, side="right"):
         hip = get_landmark_2d(frame_data, "left_hip")
         knee = get_landmark_2d(frame_data, "left_knee")
         ankle = get_landmark_2d(frame_data, "left_ankle")
+    if hip is None or knee is None or ankle is None:
+        return None
 
     return round(angle_at_joint(hip, knee, ankle), 1)
 
@@ -246,7 +269,12 @@ def calc_shoulder_hip_separation_fo(frame_data):
     """
     shoulder_angle = calc_shoulder_turn_fo(frame_data)
     hip_angle = calc_hip_turn_fo(frame_data)
-    return round(shoulder_angle - hip_angle, 1)
+    if shoulder_angle is None or hip_angle is None:
+        return None
+    # Use shortest angular distance to handle atan2 wraparound at ±180°
+    d = shoulder_angle - hip_angle
+    d = (d + 180) % 360 - 180
+    return round(d, 1)
 
 
 def calc_forward_bend_dtl(frame_data):
@@ -259,6 +287,8 @@ def calc_forward_bend_dtl(frame_data):
     rs = get_landmark_2d(frame_data, "right_shoulder")
     lh = get_landmark_2d(frame_data, "left_hip")
     rh = get_landmark_2d(frame_data, "right_hip")
+    if ls is None or rs is None or lh is None or rh is None:
+        return None
 
     shoulder_mid = (ls + rs) / 2
     hip_mid = (lh + rh) / 2
@@ -282,6 +312,8 @@ def calc_elbow_angle(frame_data, side="right"):
         shoulder = get_landmark_2d(frame_data, "left_shoulder")
         elbow = get_landmark_2d(frame_data, "left_elbow")
         wrist = get_landmark_2d(frame_data, "left_wrist")
+    if shoulder is None or elbow is None or wrist is None:
+        return None
 
     return round(angle_at_joint(shoulder, elbow, wrist), 1)
 
@@ -326,16 +358,15 @@ def analyze_video(landmarks_data, phases, view_label):
             angles["left_elbow"] = calc_elbow_angle(frame_data, "left")
             angles["right_knee_flex"] = calc_knee_flex(frame_data, "right")
 
-            # Wrist cock (right wrist more visible in DTL)
-            rw_vis = frame_data["landmarks"]["right_wrist"]["visibility"]
-            if rw_vis > 0.4:
-                angles["right_wrist_cock"] = calc_wrist_cock(frame_data, "right")
+            # Wrist cock (visibility checked inside calc_wrist_cock via get_landmark_2d)
+            angles["right_wrist_cock"] = calc_wrist_cock(frame_data, "right")
 
             # Shoulder/hip info from DTL
             sh_info = calc_shoulder_turn_dtl(frame_data)
-            angles["shoulder_width_apparent"] = sh_info["shoulder_width"]
-            angles["hip_width_apparent"] = sh_info["hip_width"]
-            angles["shoulder_hip_offset_x"] = sh_info["shoulder_hip_offset_x"]
+            if sh_info is not None:
+                angles["shoulder_width_apparent"] = sh_info["shoulder_width"]
+                angles["hip_width_apparent"] = sh_info["hip_width"]
+                angles["shoulder_hip_offset_x"] = sh_info["shoulder_hip_offset_x"]
 
         elif view_label == "fo":
             # Face-on specific angles
@@ -349,9 +380,15 @@ def analyze_video(landmarks_data, phases, view_label):
             angles["right_elbow"] = calc_elbow_angle(frame_data, "right")
             angles["left_elbow"] = calc_elbow_angle(frame_data, "left")
 
+        # Filter out None values (low-visibility landmarks)
+        skipped = [name for name, val in angles.items() if val is None]
+        angles = {k: v for k, v in angles.items() if v is not None}
+
         # Print angles
         for name, value in angles.items():
             print(f"    {name:30s}: {value}°" if isinstance(value, (int, float)) else f"    {name:30s}: {value}")
+        if skipped:
+            print(f"    {'(skipped, low visibility)':30s}: {', '.join(skipped)}")
 
         results[phase_name] = {
             "frame": frame_num,

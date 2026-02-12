@@ -148,10 +148,13 @@ def find_top_of_backswing(y_smooth, velocity, rough_address_y, fps, params,
     before the fastest downswing.
 
     Strategy:
-      1. Find the frame with peak downswing velocity (largest positive Y change
-         = hands coming down fastest). This is the most reliable signal.
-      2. Search backwards from that peak to find the preceding local minimum
-         of Y — that's the top of backswing.
+      1. Find ALL significant downswing velocity peaks, not just the global max.
+         The post-swing hand drop (walking away) can have velocity as large as
+         the actual downswing, so using the global max can pick the wrong event.
+      2. For each velocity peak (earliest first), search backwards for the
+         preceding Y-minimum. Validate that the minimum is followed by a
+         return to near-address Y level (the characteristic backswing-impact
+         "V" shape).
       3. Fall back to prominence-based search if velocity approach fails.
 
     Using visibility data when available to discount low-confidence frames
@@ -183,32 +186,75 @@ def find_top_of_backswing(y_smooth, velocity, rough_address_y, fps, params,
 
     diag = {}
 
-    # Strategy 1: Find peak downswing velocity, then search backwards for the top
-    # The downswing is the fastest part of the swing — large positive dY/dt
-    peak_downswing = int(np.argmax(dir_vel_smooth))
-    diag["peak_downswing_frame"] = peak_downswing
-    diag["peak_downswing_vel"] = float(dir_vel_smooth[peak_downswing])
+    # Strategy 1: Find ALL significant velocity peaks, try each (earliest first)
+    # A golf downswing creates a large positive dY/dt (hands coming down fast).
+    # But post-swing motion (walking away, lowering hands) can also create a
+    # similar velocity spike. Using only the global max picks the wrong one
+    # if the post-swing spike is larger.
+    global_peak = int(np.argmax(dir_vel_smooth))
+    global_peak_vel = float(dir_vel_smooth[global_peak])
+    diag["peak_downswing_frame"] = global_peak
+    diag["peak_downswing_vel"] = global_peak_vel
 
-    # Validate: the peak must be significantly fast (not just noise)
-    if dir_vel_smooth[peak_downswing] > params["still_threshold"] * 5:
-        # Search backwards from peak to find the preceding Y minimum
-        # The top is where hands stop going up and start coming down
-        search_start = max(0, peak_downswing - int(fps * 3))  # up to 3s before peak
-        search_region = y_smooth[search_start:peak_downswing + 1]
+    if global_peak_vel > params["still_threshold"] * 5:
+        # Find all velocity peaks above 40% of the global max
+        peak_threshold = global_peak_vel * 0.4
+        vel_peaks = []
+        for i in range(2, len(dir_vel_smooth) - 2):
+            if (dir_vel_smooth[i] >= dir_vel_smooth[i - 1] and
+                    dir_vel_smooth[i] >= dir_vel_smooth[i + 1] and
+                    dir_vel_smooth[i] > peak_threshold):
+                # Avoid duplicates within 0.5s of each other (keep the stronger one)
+                if vel_peaks and (i - vel_peaks[-1]) < int(fps * 0.5):
+                    if dir_vel_smooth[i] > dir_vel_smooth[vel_peaks[-1]]:
+                        vel_peaks[-1] = i
+                else:
+                    vel_peaks.append(i)
 
-        if len(search_region) > 2:
-            # Find the minimum Y in this region (hands at highest point)
+        diag["velocity_peaks"] = vel_peaks
+
+        # Try each velocity peak in chronological order (earliest first).
+        # The first valid backswing→impact "V" shape wins.
+        for peak_frame in sorted(vel_peaks):
+            search_start = max(0, peak_frame - int(fps * 3))
+            search_region = y_smooth[search_start:peak_frame + 1]
+
+            if len(search_region) <= 2:
+                continue
+
             local_min_idx = int(np.argmin(search_region)) + search_start
-
-            # Verify it's a real top: Y should be significantly above address level
             top_prominence = rough_address_y - y_smooth[local_min_idx]
-            if top_prominence > prominence:
-                diag["chosen"] = local_min_idx
-                diag["method"] = "velocity_peak_backtrack"
-                diag["top_prominence"] = float(top_prominence)
-                return local_min_idx, diag
 
-    # Strategy 2: Fallback — prominence-based with velocity validation
+            if top_prominence <= prominence:
+                continue
+
+            # Validate "V" shape: after the top, Y must return to within 60%
+            # of address level within 1.5s. This distinguishes the real
+            # backswing→impact from follow-through→walking-away.
+            validation_end = min(local_min_idx + int(fps * 1.5), n)
+            post_top_y = y_smooth[local_min_idx:validation_end]
+            if len(post_top_y) > 0:
+                max_return_y = float(np.nanmax(post_top_y))
+                # Check that hands come back down to at least 60% of address level
+                return_ratio = max_return_y / rough_address_y if rough_address_y > 0 else 0
+                if return_ratio < 0.6:
+                    # Hands never returned to near-address level — likely
+                    # this is the follow-through, not the top of backswing
+                    diag.setdefault("rejected_peaks", []).append({
+                        "frame": peak_frame,
+                        "min_idx": local_min_idx,
+                        "return_ratio": round(return_ratio, 3),
+                        "reason": "no_v_shape_return",
+                    })
+                    continue
+
+            diag["chosen"] = local_min_idx
+            diag["method"] = "velocity_peak_backtrack"
+            diag["top_prominence"] = float(top_prominence)
+            diag["used_peak"] = peak_frame
+            return local_min_idx, diag
+
+    # Strategy 2: Fallback — prominence-based with velocity and V-shape validation
     minima = []
     for i in range(2, n - 2):
         if (y_smooth[i] <= y_smooth[i - 1] and y_smooth[i] <= y_smooth[i + 1] and
@@ -225,17 +271,26 @@ def find_top_of_backswing(y_smooth, velocity, rough_address_y, fps, params,
         window_end = min(candidate + val_frames, n)
         post_vel = velocity[candidate:window_end]
         if len(post_vel) > 0 and np.max(post_vel) > params["still_threshold"] * 3:
-            validated.append(candidate)
+            # Also validate V-shape: hands must return toward address level
+            v_end = min(candidate + int(fps * 1.5), n)
+            post_y = y_smooth[candidate:v_end]
+            max_return = float(np.nanmax(post_y)) if len(post_y) > 0 else 0
+            return_ratio = max_return / rough_address_y if rough_address_y > 0 else 0
+            if return_ratio >= 0.6:
+                validated.append(candidate)
 
     if validated:
-        best = min(validated, key=lambda m: y_smooth[m])
+        # Prefer the FIRST valid minimum (chronologically), not the deepest.
+        # The follow-through often has lower Y (hands higher) than the backswing.
+        best = validated[0]
         diag["chosen"] = best
         diag["method"] = "prominence_fallback"
         diag["candidates_count"] = len(validated)
         return best, diag
 
     if qualified:
-        best = min(qualified, key=lambda m: y_smooth[m])
+        # Without V-shape validation, still prefer chronologically first
+        best = qualified[0]
         diag["chosen"] = best
         diag["method"] = "prominence_only"
         return best, diag
@@ -563,10 +618,49 @@ def detect_phases(landmarks_data, view="dtl", params=None):
         sys.exit(1)
     rough_address_y = float(np.nanmax(valid_y))
 
+    # Step 2b: Limit search to the swing portion of the video.
+    # User videos often include extra footage after the swing (walking away,
+    # picking up the ball, etc.). Find the last extended still period (the
+    # actual address position) and constrain the search to a window after it.
+    max_swing_sec = 6.0  # backswing + downswing + follow-through from address
+    still_thresh = effective_params["still_threshold"]
+    min_still_dur = effective_params["min_still_duration"]
+
+    # Find the last still run of sufficient length — this is the address.
+    # Scan for contiguous runs of low-velocity frames.
+    still_runs = []
+    run_start = None
+    for i in range(len(velocity)):
+        if velocity[i] < still_thresh:
+            if run_start is None:
+                run_start = i
+        else:
+            if run_start is not None and (i - run_start) >= min_still_dur:
+                still_runs.append((run_start, i - 1))
+            run_start = None
+    if run_start is not None and (len(velocity) - run_start) >= min_still_dur:
+        still_runs.append((run_start, len(velocity) - 1))
+
+    if still_runs:
+        # Use the last still run as the rough address location
+        last_still_end = still_runs[-1][1]
+        swing_end_frame = min(last_still_end + int(max_swing_sec * fps), total_frames)
+    else:
+        # No still period found — search the whole video
+        swing_end_frame = total_frames
+
+    print(f"  Swing search window: frames 0-{swing_end_frame} "
+          f"({swing_end_frame/fps:.1f}s of {total_frames/fps:.1f}s)")
+
+    # Create trimmed copies for phase detection
+    y_swing = y_smooth[:swing_end_frame]
+    vel_swing = velocity[:swing_end_frame]
+    vis_swing = visibility[:swing_end_frame] if visibility is not None else None
+
     # Step 3: Find top of backswing (the anchor)
     top_frame, top_diag = find_top_of_backswing(
-        y_smooth, velocity, rough_address_y, fps, effective_params,
-        visibility=visibility
+        y_swing, vel_swing, rough_address_y, fps, effective_params,
+        visibility=vis_swing
     )
     if top_frame < 0:
         print("  ERROR: Could not detect top of backswing.")

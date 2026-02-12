@@ -176,15 +176,16 @@ FAULT_RULES: list[FaultRule] = [
         min_delta=None,
         max_delta=None,
         severity="major",
-        title="Incomplete Shoulder Turn",
+        title="Shoulder Line Tilt at Top",
         description=(
-            "Your shoulder line angle at the top is {user_value:.1f} degrees versus "
-            "Tiger's {ref_value:.1f} degrees. An incomplete shoulder turn limits "
-            "power generation and coil."
+            "Your shoulder line tilts {user_value:.1f} degrees from horizontal at "
+            "the top, compared to Tiger's {ref_value:.1f} degrees — a "
+            "{abs_delta:.1f}-degree difference. This tilt reflects how level or "
+            "angled your shoulders are during the backswing."
         ),
         coaching_tip=(
-            "Feel your back face the target at the top of the swing. "
-            "Practice with a club across your shoulders to check rotation."
+            "Check your shoulder tilt at the top with a mirror or video. "
+            "Your lead shoulder should work down toward the ball, not stay level."
         ),
     ),
     FaultRule(
@@ -194,11 +195,11 @@ FAULT_RULES: list[FaultRule] = [
         min_delta=None,
         max_delta=None,
         severity="major",
-        title="Hip Rotation Timing Issue",
+        title="Hip Line Tilt at Impact",
         description=(
-            "Your hip line angle at impact is {user_value:.1f} degrees versus "
-            "Tiger's {ref_value:.1f} degrees, a {abs_delta:.1f}-degree difference. "
-            "Proper hip rotation is the engine of the downswing."
+            "Your hip line tilts {user_value:.1f} degrees from horizontal at impact "
+            "versus Tiger's {ref_value:.1f} degrees, a {abs_delta:.1f}-degree difference. "
+            "The hip line angle at impact reflects weight shift and lower body drive."
         ),
         coaching_tip=(
             "Start your downswing by bumping your left hip toward the target, "
@@ -212,11 +213,12 @@ FAULT_RULES: list[FaultRule] = [
         min_delta=None,
         max_delta=None,
         severity="major",
-        title="Shoulder-Hip Separation Off",
+        title="Upper-Lower Body Tilt Gap",
         description=(
-            "Your X-factor (shoulder-hip separation) at the top is "
-            "{user_value:.1f} degrees versus Tiger's {ref_value:.1f} degrees. "
-            "This separation creates the coil that generates power."
+            "The tilt difference between your shoulder and hip lines at the top "
+            "is {user_value:.1f} degrees versus Tiger's {ref_value:.1f} degrees. "
+            "This gap indicates how much your upper body tilts independently of "
+            "your lower body during the backswing."
         ),
         coaching_tip=(
             "Focus on turning your shoulders more while restricting your hip turn. "
@@ -298,6 +300,15 @@ FAULT_RULES: list[FaultRule] = [
 ]
 
 
+# Per-view catch-all thresholds for rules without specific min/max deltas.
+# Face-on angles are inherently noisier (2D projection of rotation) so
+# require a larger delta to be considered significant.
+CATCHALL_THRESHOLD = {
+    "dtl": 8,
+    "fo": 15,
+}
+
+
 def _rule_matches(rule: FaultRule, delta: float) -> bool:
     """Check if a rule's delta condition is met."""
     # For rules with specific thresholds
@@ -306,9 +317,10 @@ def _rule_matches(rule: FaultRule, delta: float) -> bool:
     if rule.max_delta is not None and delta >= rule.max_delta:
         return True
     # For rules without specific thresholds (None/None),
-    # trigger if the absolute delta is significant (> 8 degrees)
+    # trigger if the absolute delta exceeds the view-specific threshold
     if rule.min_delta is None and rule.max_delta is None:
-        return abs(delta) > 8
+        threshold = CATCHALL_THRESHOLD.get(rule.view, 10)
+        return abs(delta) > threshold
     return False
 
 
@@ -406,9 +418,9 @@ def _format_angle_name(name: str) -> str:
         "right_knee_flex": "Right Knee Flex",
         "left_knee_flex": "Left Knee Flex",
         "right_wrist_cock": "Wrist Cock",
-        "shoulder_line_angle": "Shoulder Turn",
-        "hip_line_angle": "Hip Rotation",
-        "x_factor": "X-Factor",
+        "shoulder_line_angle": "Shoulder Line Tilt",
+        "hip_line_angle": "Hip Line Tilt",
+        "x_factor": "Shoulder-Hip Tilt Separation",
         "spine_tilt_fo": "Spine Tilt",
     }
     return replacements.get(name, name.replace("_", " ").title())

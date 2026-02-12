@@ -4,6 +4,10 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+# Angles computed via atan2 that wrap around ±180°.
+# These need angular difference (shortest path) instead of naive subtraction.
+_WRAPAROUND_ANGLES = {"shoulder_line_angle", "hip_line_angle"}
+
 # Weights for ranking angle importance.
 # Higher weight = more significant when determining top faults.
 ANGLE_WEIGHTS = {
@@ -16,6 +20,10 @@ ANGLE_WEIGHTS = {
     ("right_elbow", "top"): 1.1,
     ("left_elbow", "impact"): 1.1,
 }
+
+# Minimum absolute delta (degrees) to consider a difference significant.
+# Deltas below this floor are filtered out to prevent noise from surfacing.
+MIN_DELTA_DEGREES = 5
 
 
 def compute_deltas(user_angles: dict, ref_angles: dict) -> dict:
@@ -49,7 +57,13 @@ def compute_deltas(user_angles: dict, ref_angles: dict) -> dict:
                     if isinstance(user_val, (int, float)) and isinstance(
                         ref_val, (int, float)
                     ):
-                        phase_deltas[angle_name] = round(user_val - ref_val, 1)
+                        if angle_name in _WRAPAROUND_ANGLES:
+                            # Shortest angular distance for atan2-based angles
+                            d = user_val - ref_val
+                            d = (d + 180) % 360 - 180
+                            phase_deltas[angle_name] = round(d, 1)
+                        else:
+                            phase_deltas[angle_name] = round(user_val - ref_val, 1)
 
             deltas[view][phase] = phase_deltas
 
@@ -72,6 +86,9 @@ def rank_differences(
     for view, view_deltas in deltas.items():
         for phase, phase_deltas in view_deltas.items():
             for angle_name, delta in phase_deltas.items():
+                if abs(delta) < MIN_DELTA_DEGREES:
+                    continue
+
                 weight = ANGLE_WEIGHTS.get((angle_name, phase), 1.0)
                 weighted_abs = abs(delta) * weight
 
