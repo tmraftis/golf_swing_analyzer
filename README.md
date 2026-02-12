@@ -86,6 +86,7 @@ golf_swing_analyzer/
 │   │   │   ├── SwingTypeSelector.tsx       # Iron (active) / Driver ("Coming Soon")
 │   │   │   ├── VideoDropZone.tsx           # Drag-and-drop upload area
 │   │   │   ├── UploadForm.tsx             # View selector + upload → analyze → redirect (sends auth token)
+│   │   │   ├── SwingLoadingAnimation.tsx  # Loading animation: 4-pose golfer cross-fade + pipeline progress
 │   │   │   ├── Button.tsx                 # Branded button component
 │   │   │   └── results/                   # Results dashboard components
 │   │   │       ├── ResultsDashboard.tsx   # Main orchestrator (state, layout)
@@ -645,6 +646,16 @@ python scripts/build_reference_json.py
   - 8 images per analysis (4 phases × 2 videos) at 85% JPEG quality
   - Frontend preloads all images on mount via `new Image()` for browser cache population
   - `<img>` overlay shown when paused (zIndex 5), hidden during playback — eliminates 50-300ms video seek latency
+- **Swing loading animation during upload and analysis:**
+  - 4-pose golfer silhouette cross-fade animation (address → backswing → impact → follow-through) on a 5-second loop
+  - Custom SVG silhouettes from Figma with uniform sizing via `preserveAspectRatio="xMidYMid meet"`
+  - Subtle glow pulse behind silhouette using design system Pastel Yellow
+  - Timed pipeline progress steps that simulate backend processing stages (uploading → extracting landmarks → detecting phases → calculating angles → comparing to reference → generating feedback)
+  - Phase-aware timer logic: upload step active during upload, remaining steps start when analysis begins
+  - Step indicators: Forest Green checkmarks for completed steps, Pastel Yellow dots for active, dim dots for pending
+  - Animated ellipsis on active step label with fixed-width container to prevent layout shift
+  - Duration hint text ("This usually takes 15–25 seconds") to set user expectations
+  - Shown during both video upload and analysis processing (~15-25s total)
 - **Branding and UX polish:**
   - Custom favicon: white golfer silhouette on transparent background (multi-size ICO: 16, 32, 48px)
   - Tab title: "Swing Pure"
