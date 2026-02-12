@@ -141,6 +141,56 @@ def select_primary_landmark(frames, params):
 
 # ─── Phase detection functions ───
 
+def _has_preceding_address(local_min_idx, velocity, y_smooth, rough_address_y, fps, params):
+    """
+    Check whether there's a still period (address) with hands low within
+    5 seconds before a candidate top-of-backswing frame.
+
+    The real top of backswing is always preceded by the address position:
+    the golfer standing still with hands near the ball (high Y). Post-swing
+    Y minima (follow-through peak, walking away) are NOT preceded by a
+    still period — they're preceded by active swing motion.
+
+    Uses a relaxed velocity threshold (3x the still_threshold) to account
+    for tracking noise during the address, and a shorter minimum still
+    duration (3 frames) since the velocity window smoothing can shorten
+    apparent still periods.
+
+    Returns True if a qualifying still period is found before local_min_idx.
+    """
+    still_thresh = params["still_threshold"] * 3  # relaxed threshold for address detection
+    min_still = 3  # shorter than address detection (which uses min_still_duration=5)
+    search_start = max(0, local_min_idx - int(fps * 5))
+
+    # Search for any still run in the window before this candidate
+    vel_region = velocity[search_start:local_min_idx]
+    run_start = None
+    for i in range(len(vel_region)):
+        if vel_region[i] < still_thresh:
+            if run_start is None:
+                run_start = i
+        else:
+            if run_start is not None and (i - run_start) >= min_still:
+                # Found a still run — check that hands were LOW (high Y)
+                abs_start = search_start + run_start
+                abs_end = search_start + i - 1
+                avg_y = float(np.mean(y_smooth[abs_start:abs_end + 1]))
+                # Hands should be in the lower 60% of Y range (near ball)
+                if avg_y > rough_address_y * 0.5:
+                    return True
+            run_start = None
+
+    # Check if a still run extends to end of region
+    if run_start is not None and (len(vel_region) - run_start) >= min_still:
+        abs_start = search_start + run_start
+        abs_end = search_start + len(vel_region) - 1
+        avg_y = float(np.mean(y_smooth[abs_start:abs_end + 1]))
+        if avg_y > rough_address_y * 0.5:
+            return True
+
+    return False
+
+
 def find_top_of_backswing(y_smooth, velocity, rough_address_y, fps, params,
                           visibility=None):
     """
@@ -152,9 +202,12 @@ def find_top_of_backswing(y_smooth, velocity, rough_address_y, fps, params,
          The post-swing hand drop (walking away) can have velocity as large as
          the actual downswing, so using the global max can pick the wrong event.
       2. For each velocity peak (earliest first), search backwards for the
-         preceding Y-minimum. Validate that the minimum is followed by a
-         return to near-address Y level (the characteristic backswing-impact
-         "V" shape).
+         preceding Y-minimum. Validate:
+         a) The minimum is followed by a return to near-address Y level (the
+            characteristic backswing-impact "V" shape).
+         b) There is a still period (address) with hands low within 5 seconds
+            BEFORE the candidate. This rejects post-swing Y dips which have
+            no preceding address.
       3. Fall back to prominence-based search if velocity approach fails.
 
     Using visibility data when available to discount low-confidence frames
@@ -248,6 +301,18 @@ def find_top_of_backswing(y_smooth, velocity, rough_address_y, fps, params,
                     })
                     continue
 
+            # Validate preceding address: there must be a still period with
+            # hands low within 5s before this candidate. Post-swing Y dips
+            # (follow-through, walking away) have no preceding address.
+            if not _has_preceding_address(local_min_idx, velocity, y_smooth,
+                                          rough_address_y, fps, params):
+                diag.setdefault("rejected_peaks", []).append({
+                    "frame": peak_frame,
+                    "min_idx": local_min_idx,
+                    "reason": "no_preceding_address",
+                })
+                continue
+
             diag["chosen"] = local_min_idx
             diag["method"] = "velocity_peak_backtrack"
             diag["top_prominence"] = float(top_prominence)
@@ -277,7 +342,10 @@ def find_top_of_backswing(y_smooth, velocity, rough_address_y, fps, params,
             max_return = float(np.nanmax(post_y)) if len(post_y) > 0 else 0
             return_ratio = max_return / rough_address_y if rough_address_y > 0 else 0
             if return_ratio >= 0.6:
-                validated.append(candidate)
+                # Must have a preceding address (still period with hands low)
+                if _has_preceding_address(candidate, velocity, y_smooth,
+                                          rough_address_y, fps, params):
+                    validated.append(candidate)
 
     if validated:
         # Prefer the FIRST valid minimum (chronologically), not the deepest.
@@ -618,49 +686,10 @@ def detect_phases(landmarks_data, view="dtl", params=None):
         sys.exit(1)
     rough_address_y = float(np.nanmax(valid_y))
 
-    # Step 2b: Limit search to the swing portion of the video.
-    # User videos often include extra footage after the swing (walking away,
-    # picking up the ball, etc.). Find the last extended still period (the
-    # actual address position) and constrain the search to a window after it.
-    max_swing_sec = 6.0  # backswing + downswing + follow-through from address
-    still_thresh = effective_params["still_threshold"]
-    min_still_dur = effective_params["min_still_duration"]
-
-    # Find the last still run of sufficient length — this is the address.
-    # Scan for contiguous runs of low-velocity frames.
-    still_runs = []
-    run_start = None
-    for i in range(len(velocity)):
-        if velocity[i] < still_thresh:
-            if run_start is None:
-                run_start = i
-        else:
-            if run_start is not None and (i - run_start) >= min_still_dur:
-                still_runs.append((run_start, i - 1))
-            run_start = None
-    if run_start is not None and (len(velocity) - run_start) >= min_still_dur:
-        still_runs.append((run_start, len(velocity) - 1))
-
-    if still_runs:
-        # Use the last still run as the rough address location
-        last_still_end = still_runs[-1][1]
-        swing_end_frame = min(last_still_end + int(max_swing_sec * fps), total_frames)
-    else:
-        # No still period found — search the whole video
-        swing_end_frame = total_frames
-
-    print(f"  Swing search window: frames 0-{swing_end_frame} "
-          f"({swing_end_frame/fps:.1f}s of {total_frames/fps:.1f}s)")
-
-    # Create trimmed copies for phase detection
-    y_swing = y_smooth[:swing_end_frame]
-    vel_swing = velocity[:swing_end_frame]
-    vis_swing = visibility[:swing_end_frame] if visibility is not None else None
-
     # Step 3: Find top of backswing (the anchor)
     top_frame, top_diag = find_top_of_backswing(
-        y_swing, vel_swing, rough_address_y, fps, effective_params,
-        visibility=vis_swing
+        y_smooth, velocity, rough_address_y, fps, effective_params,
+        visibility=visibility
     )
     if top_frame < 0:
         print("  ERROR: Could not detect top of backswing.")

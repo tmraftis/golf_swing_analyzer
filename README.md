@@ -4,7 +4,7 @@
 
 Compare your golf swing to Tiger Woods' iconic 2000 iron swing using computer vision. Upload down-the-line (DTL) and face-on (FO) videos, and get back angle comparisons, top 3 faults, and drill recommendations — all in under 20 seconds with GPU acceleration.
 
-**Current status:** Phase 4 in progress. Upload videos, get AI-powered swing analysis with side-by-side video comparison against Tiger Woods, phase-by-phase navigation, angle comparison tables, and coaching feedback. Toggleable skeleton overlay tracks your body in real-time during video playback (frame-by-frame on user video, phase-only on Tiger). Phase frame images extracted server-side as JPEGs for instant phase/view switching with zero seek latency. GPU-accelerated landmark extraction via Modal runs both videos in parallel on T4 GPUs. Server-side video compression (ffmpeg H.264 ~4Mbps) reduces storage by ~73% and speeds up video streaming. Authentication via PropelAuth with Google OAuth and Magic Link sign-in — live in both local dev and production (`swingpure.ai`). Phase detection now includes a swing window constraint to prevent post-swing walking from being misidentified as the backswing. Angle comparison uses wraparound-aware deltas for atan2-based angles (shoulder/hip line), fixing incorrect 346° deltas that should be ~14°. V1 is iron-only; driver support is planned for a future release.
+**Current status:** Phase 4 in progress. Upload videos, get AI-powered swing analysis with side-by-side video comparison against Tiger Woods, phase-by-phase navigation, angle comparison tables, and coaching feedback. Toggleable skeleton overlay tracks your body in real-time during video playback (frame-by-frame on user video, phase-only on Tiger). Phase frame images extracted server-side as JPEGs for instant phase/view switching with zero seek latency. GPU-accelerated landmark extraction via Modal runs both videos in parallel on T4 GPUs. Server-side video compression (ffmpeg H.264 ~4Mbps) reduces storage by ~73% and speeds up video streaming. Authentication via PropelAuth with Google OAuth and Magic Link sign-in — live in both local dev and production (`swingpure.ai`). Phase detection uses preceding-address validation to prevent post-swing walking from being misidentified as the backswing. Angle comparison uses wraparound-aware deltas for atan2-based angles (shoulder/hip line), fixing incorrect 346° deltas that should be ~14°. V1 is iron-only; driver support is planned for a future release.
 
 ---
 
@@ -524,7 +524,7 @@ python scripts/build_reference_json.py
 - **`useReducer` for upload form state** — manages the multi-step flow (upload → analyzing → redirect) without a global store
 - **HTTP range requests for video serving** — FastAPI's StaticFiles doesn't support range requests, which browsers need for video seeking; custom streaming endpoint returns `206 Partial Content` with proper `Content-Range` headers
 - **Velocity-based phase detection** — more robust than Y-position thresholds; anchors on peak downswing speed (the most reliable signal in any swing video) and works backwards/forwards from there
-- **Swing window constraint** — phase detection limits the search to a 6-second window after the last still period (address), preventing post-swing walking/movement from being misidentified as the backswing; handles videos with long pre-shot routines and post-swing footage
+- **Preceding-address validation** — each candidate top-of-backswing must have a still period (address) with hands low within 5 seconds before it; post-swing Y dips (walking away, lowering hands) have no preceding address and are rejected; uses a relaxed velocity threshold (3x `still_threshold`) to account for DTL tracking noise during the address position
 - **Visibility-weighted signal filtering** — MediaPipe landmark visibility below 0.4 treated as NaN to prevent tracking artifacts from corrupting phase detection, especially at video boundaries and during fast motion
 - **Wraparound-aware angle deltas** — shoulder/hip line angles computed via atan2 wrap at ±180°; comparison engine uses shortest angular distance `(d + 180) % 360 - 180` to avoid nonsensical 346° deltas when the actual difference is ~14°
 - **Video readiness tracking in React** — `loadeddata` event listeners ensure video seeking works even when metadata hasn't loaded yet; pending seeks are queued and executed once the video is ready
@@ -592,7 +592,7 @@ python scripts/build_reference_json.py
 - **Video serving with HTTP range requests** — custom endpoint replaces StaticFiles, enabling instant video seeking in the browser
 - **Phase detection improvements:**
   - Velocity-based detection: anchors on peak downswing speed, backtracks to find top of backswing
-  - Swing window constraint: limits search to 6s after the last still period, preventing post-swing walking from being misidentified as the backswing
+  - Preceding-address validation: each backswing candidate must have a still period with hands low within 5s before it, rejecting post-swing false positives
   - Visibility filtering: frames with low MediaPipe confidence (< 0.4) excluded from signal analysis
   - Address detection picks the most settled frame within the still period (highest Y / hands lowest)
   - Follow-through detection uses midpoint of the first settled period after impact
