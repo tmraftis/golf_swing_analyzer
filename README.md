@@ -196,7 +196,7 @@ modal token set --token-id <your-id> --token-secret <your-secret>
 modal deploy modal_app/landmark_worker.py
 ```
 
-Then set `USE_MODAL=true` in `backend/.env`. Without Modal, landmark extraction runs locally on CPU (~50s). With Modal, both videos are processed in parallel on T4 GPUs (~5-8s). Cold starts add ~18-35s on the first request after idle; optionally add `min_containers=1` to the `@app.function()` decorator to keep a warm instance ready.
+Then set `USE_MODAL=true` in `backend/.env`. Without Modal, landmark extraction runs locally on CPU (~15-25s per video). With Modal, the video is processed on a T4 GPU (~3-5s). Cold starts add ~18-35s on the first request after idle; optionally add `min_containers=1` to the `@app.function()` decorator to keep a warm instance ready.
 
 ### 2.5. Set up PropelAuth
 
@@ -525,13 +525,13 @@ python scripts/build_reference_json.py
 - **Visibility-weighted signal filtering** — MediaPipe landmark visibility below 0.4 treated as NaN to prevent tracking artifacts from corrupting phase detection, especially at video boundaries and during fast motion
 - **Wraparound-aware angle deltas** — shoulder/hip line angles computed via atan2 wrap at ±180°; comparison engine uses shortest angular distance `(d + 180) % 360 - 180` to avoid nonsensical 346° deltas when the actual difference is ~14°
 - **Video readiness tracking in React** — `loadeddata` event listeners ensure video seeking works even when metadata hasn't loaded yet; pending seeks are queued and executed once the video is ready
-- **Preloaded video views** — all 4 videos (user DTL, user FO, ref DTL, ref FO) are rendered simultaneously with `preload="auto"` and toggled via CSS visibility; switching between DTL and Face On is instant after initial load
-- **Modal GPU acceleration** — landmark extraction offloaded to Modal T4 GPUs, with both DTL and FO videos processed in parallel via `.spawn()` / `.get()`. Reduces extraction from ~50s (sequential CPU) to ~5-8s (parallel GPU). Uses `RunningMode.IMAGE` for deterministic per-frame detection (VIDEO mode was non-deterministic due to temporal tracking state). Automatic retry on low detection rate with a relaxed threshold. Automatic fallback to local CPU if Modal is unavailable.
+- **Single-view upload flow** — user selects DTL or FO before uploading, and only one video is processed per analysis; halves processing time vs. dual-view and simplifies the UX
+- **Modal GPU acceleration** — landmark extraction offloaded to Modal T4 GPUs. Single-view extraction uses `.remote()` for synchronous processing (~3-5s); dual-view (if both requested) uses `.spawn()` / `.get()` for parallel processing (~5-8s). Uses `RunningMode.IMAGE` for deterministic per-frame detection (VIDEO mode was non-deterministic due to temporal tracking state). Automatic retry on low detection rate with a relaxed threshold. Automatic fallback to local CPU if Modal is unavailable.
 - **Video downscaling for inference** — frames downscaled to 960px height before MediaPipe inference on Modal; normalized landmark coordinates remain resolution-independent, with pixel positions mapped back to original dimensions
 - **Lazy Modal import** — `modal` package only imported when `USE_MODAL=true`, so the backend works without Modal installed when running locally
 - **Server-side video compression** — uploaded videos (typically iPhone HEVC .MOV, ~15Mbps, ~35MB each) are compressed to H.264 1080p ~4Mbps via ffmpeg after upload, reducing storage by ~73% (~35MB → ~8MB per file). Orientation-aware scale filter preserves portrait (1080×1920) and landscape (1920×1080) dimensions. `+faststart` moves moov atom for HTTP streaming. Graceful fallback: skips compression if ffmpeg is missing or compression fails. Controllable via `COMPRESS_UPLOADS=false` env var
 - **Skeleton overlay via canvas** — toggleable pose skeleton drawn on an HTML5 `<canvas>` absolutely positioned over each video using `pointer-events-none`. Landmarks (normalized 0-1 coords) are mapped to pixel positions accounting for `object-contain` letterboxing/pillarboxing via `getVideoRenderRect()`. `ResizeObserver` redraws on container resize. User video has frame-by-frame skeleton tracking during playback via `requestAnimationFrame` loop with binary search for nearest landmark frame by timestamp (~60fps). Tiger video shows skeleton at phase frames only (reference data has 4 phase landmarks, not per-frame). Backend includes both phase landmarks and all-frame landmarks in the `AnalysisResponse` — compact keys (`t`, `lm`) keep payload to ~10-20KB
-- **Phase frame image extraction** — server-side JPEG snapshots extracted at each of the 4 phase frames (address, top, impact, follow-through) for both user and reference videos using cv2. Images are preloaded on the frontend via `new Image()` and displayed as `<img>` overlays when paused, eliminating the 50-300ms video seeking latency when switching phases or views. 16 images total (4 phases × 2 views × 2 videos), ~85% JPEG quality
+- **Phase frame image extraction** — server-side JPEG snapshots extracted at each of the 4 phase frames (address, top, impact, follow-through) for both user and reference videos using cv2. Images are preloaded on the frontend via `new Image()` and displayed as `<img>` overlays when paused, eliminating the 50-300ms video seeking latency when switching phases. 8 images per analysis (4 phases × 2 videos), ~85% JPEG quality
 
 ---
 
@@ -574,15 +574,15 @@ python scripts/build_reference_json.py
   - Animated loading state during analysis
   - Results view: top 3 differences with severity badges, angle comparisons, coaching tips
   - "Analyze Another Swing" reset flow
-- **Performance:** ~50 seconds end-to-end (within 60s target)
+- **Performance:** ~15-25 seconds end-to-end for single view (within 30s target)
 
 ### Phase 3 deliverables (completed)
 
 - **Results dashboard** (`/results/[uploadId]`):
   - Side-by-side video comparison (user swing vs Tiger Woods 2000)
-  - DTL/FO view toggle switches both videos simultaneously
+  - Single-view analysis — user chooses DTL or FO before uploading
   - Phase-by-phase navigation (Address, Top, Impact, Follow-Through) seeks both videos to their respective timestamps
-  - Play/pause syncs both videos
+  - Play/pause syncs both videos (user vs Tiger)
   - Progress bar with phase markers
   - Collapsible angle comparison table with delta color-coding
   - Top 3 coaching feedback cards with severity badges
@@ -626,7 +626,7 @@ python scripts/build_reference_json.py
   - ffmpeg added to Docker image for production deployment
 - **UX improvements:**
   - Removed redundant "Analyze Your Swing" button from header nav
-  - Preloaded all video views for instant DTL/Face On switching
+  - Single-view upload flow: user picks DTL or FO, uploads one video, results page auto-detects the view
 
 ### Phase 4 deliverables (in progress)
 
@@ -642,7 +642,7 @@ python scripts/build_reference_json.py
   - Graceful degradation: toggle hidden if landmark data unavailable (old cached results)
 - **Instant phase switching via server-side frame extraction:**
   - JPEG snapshots extracted at each phase frame for both user and Tiger videos (cv2)
-  - 16 images total (4 phases × 2 views × 2 videos) at 85% JPEG quality
+  - 8 images per analysis (4 phases × 2 videos) at 85% JPEG quality
   - Frontend preloads all images on mount via `new Image()` for browser cache population
   - `<img>` overlay shown when paused (zIndex 5), hidden during playback — eliminates 50-300ms video seek latency
 - **Branding and UX polish:**
@@ -663,7 +663,7 @@ python scripts/build_reference_json.py
 
 | Metric | Target | Local CPU | Modal GPU (warm) |
 |--------|--------|:---------:|:---------:|
-| End-to-end processing time | <60s | ~50s | ~10-15s |
+| End-to-end processing time (single view) | <30s | ~15-25s | ~5-10s |
 | Landmark detection rate | >70% | Varies by video quality | Same |
 | Top differences returned | 3 | 3 | 3 |
 | System uptime (once deployed) | 99% | — | — |
