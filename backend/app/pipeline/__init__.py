@@ -159,6 +159,49 @@ def _find_video(upload_dir: str, upload_id: str, view: str) -> str:
     return matches[0]
 
 
+def _extract_landmarks_modal_single(
+    video_path: str,
+    frame_step: int,
+    min_detection_rate: float,
+    target_height: int,
+    model_path: str,
+) -> dict:
+    """Extract landmarks via Modal GPU for a single video with fallback to local."""
+    try:
+        from .modal_extractor import extract_landmarks_single_modal
+
+        logger.info("Extracting landmarks via Modal (GPU-accelerated)...")
+        with open(video_path, "rb") as f:
+            video_bytes = f.read()
+
+        result = extract_landmarks_single_modal(
+            video_bytes=video_bytes,
+            frame_step=frame_step,
+            min_detection_rate=min_detection_rate,
+            target_height=target_height,
+        )
+
+        # Log extraction results for debugging
+        total = len(result.get("frames", []))
+        detected = sum(1 for f in result.get("frames", []) if f.get("detected"))
+        fps = result.get("summary", {}).get("fps", 0)
+        logger.info(
+            f"Modal: {total} frames, {detected} detected "
+            f"({detected/total*100:.0f}%), fps={fps}"
+        )
+
+        return result
+
+    except PipelineError:
+        raise
+
+    except Exception as e:
+        logger.warning(f"Modal extraction failed ({e}), falling back to local...")
+        return extract_landmarks_from_video(
+            video_path, model_path, frame_step, min_detection_rate
+        )
+
+
 def _extract_landmarks_modal(
     dtl_path: str,
     fo_path: str,
@@ -223,6 +266,7 @@ def run_analysis(
     swing_type: str,
     upload_dir: str,
     model_path: str,
+    views: list[str] | None = None,
     frame_step: int = 2,
     min_detection_rate: float = 0.7,
     use_modal: bool = False,
@@ -235,6 +279,7 @@ def run_analysis(
         swing_type: 'iron' (only option in v1).
         upload_dir: Path to the uploads directory.
         model_path: Path to the MediaPipe model file.
+        views: List of views to process, e.g. ["dtl"] or ["fo"] or ["dtl", "fo"].
         frame_step: Process every Nth frame (default 2).
         min_detection_rate: Minimum acceptable pose detection rate.
         use_modal: If True, offload landmark extraction to Modal GPUs.
@@ -247,52 +292,61 @@ def run_analysis(
         VideoNotFoundError: If uploaded videos not found.
         PipelineError: On any pipeline failure.
     """
+    if views is None:
+        views = ["dtl", "fo"]
+
     start_time = time.time()
-    logger.info(f"Starting analysis for upload {upload_id} (swing_type={swing_type})")
+    logger.info(
+        f"Starting analysis for upload {upload_id} "
+        f"(swing_type={swing_type}, views={views})"
+    )
 
     # Step 1: Locate uploaded videos
-    dtl_path = _find_video(upload_dir, upload_id, "dtl")
-    fo_path = _find_video(upload_dir, upload_id, "fo")
-    logger.info(f"Found videos: DTL={dtl_path}, FO={fo_path}")
+    video_paths = {}
+    for view in views:
+        video_paths[view] = _find_video(upload_dir, upload_id, view)
+    logger.info(f"Found videos: {video_paths}")
 
     # Step 2: Extract landmarks
+    landmarks = {}
     if use_modal:
-        dtl_landmarks, fo_landmarks = _extract_landmarks_modal(
-            dtl_path, fo_path, frame_step, min_detection_rate,
-            modal_target_height, model_path,
-        )
+        if len(views) == 2 and "dtl" in views and "fo" in views:
+            # Both views — use parallel Modal extraction
+            dtl_lm, fo_lm = _extract_landmarks_modal(
+                video_paths["dtl"], video_paths["fo"],
+                frame_step, min_detection_rate,
+                modal_target_height, model_path,
+            )
+            landmarks["dtl"] = dtl_lm
+            landmarks["fo"] = fo_lm
+        else:
+            # Single view — use single Modal extraction
+            for view in views:
+                landmarks[view] = _extract_landmarks_modal_single(
+                    video_paths[view], frame_step, min_detection_rate,
+                    modal_target_height, model_path,
+                )
     else:
-        logger.info("Extracting landmarks from DTL video...")
-        dtl_landmarks = extract_landmarks_from_video(
-            dtl_path, model_path, frame_step, min_detection_rate
-        )
-
-        logger.info("Extracting landmarks from FO video...")
-        fo_landmarks = extract_landmarks_from_video(
-            fo_path, model_path, frame_step, min_detection_rate
-        )
+        for view in views:
+            logger.info(f"Extracting landmarks from {view.upper()} video...")
+            landmarks[view] = extract_landmarks_from_video(
+                video_paths[view], model_path, frame_step, min_detection_rate
+            )
 
     # Step 3: Detect phases
-    dtl_phases = detect_swing_phases(dtl_landmarks, "dtl")
-    fo_phases = detect_swing_phases(fo_landmarks, "fo")
+    phases = {}
+    for view in views:
+        phases[view] = detect_swing_phases(landmarks[view], view)
 
     # Step 4: Calculate angles
-    dtl_angle_results = calculate_angles(dtl_landmarks, dtl_phases, "dtl")
-    fo_angle_results = calculate_angles(fo_landmarks, fo_phases, "fo")
-
-    user_angles = {
-        "dtl": dtl_angle_results,
-        "fo": fo_angle_results,
-    }
+    user_angles = {}
+    for view in views:
+        user_angles[view] = calculate_angles(landmarks[view], phases[view], view)
 
     # Step 5: Load reference data
-    dtl_ref = load_reference(swing_type, "dtl")
-    fo_ref = load_reference(swing_type, "fo")
-
-    ref_angles = {
-        "dtl": dtl_ref,
-        "fo": fo_ref,
-    }
+    ref_angles = {}
+    for view in views:
+        ref_angles[view] = load_reference(swing_type, view)
 
     # Step 6: Compute deltas
     deltas = compute_deltas(user_angles, ref_angles)
@@ -302,65 +356,61 @@ def run_analysis(
     top_differences = generate_feedback(ranked, user_angles, ref_angles)
 
     # Step 4b: Extract phase landmarks for skeleton overlay
-    user_phase_landmarks = {
-        "dtl": _extract_phase_landmarks(dtl_landmarks, dtl_phases),
-        "fo": _extract_phase_landmarks(fo_landmarks, fo_phases),
-    }
-    reference_phase_landmarks = {
-        "dtl": {phase: data.get("landmarks", {}) for phase, data in dtl_ref.items()},
-        "fo": {phase: data.get("landmarks", {}) for phase, data in fo_ref.items()},
-    }
+    user_phase_landmarks = {}
+    reference_phase_landmarks = {}
+    for view in views:
+        user_phase_landmarks[view] = _extract_phase_landmarks(
+            landmarks[view], phases[view]
+        )
+        reference_phase_landmarks[view] = {
+            phase: data.get("landmarks", {})
+            for phase, data in ref_angles[view].items()
+        }
 
     # Step 4c: Extract ALL frame landmarks for continuous skeleton playback
-    user_all_landmarks = {
-        "dtl": _extract_all_frame_landmarks(dtl_landmarks),
-        "fo": _extract_all_frame_landmarks(fo_landmarks),
-    }
+    user_all_landmarks = {}
+    for view in views:
+        user_all_landmarks[view] = _extract_all_frame_landmarks(landmarks[view])
 
     # Step 4d: Extract phase frame JPEG images for instant phase switching
     logger.info("Extracting phase frame images...")
-    user_phase_images = {
-        "dtl": _extract_phase_frame_images(
-            dtl_path, dtl_phases, upload_dir, upload_id, "dtl"
-        ),
-        "fo": _extract_phase_frame_images(
-            fo_path, fo_phases, upload_dir, upload_id, "fo"
-        ),
-    }
+    user_phase_images = {}
+    for view in views:
+        user_phase_images[view] = _extract_phase_frame_images(
+            video_paths[view], phases[view], upload_dir, upload_id, view
+        )
 
     # Reference video phase frame images (Tiger)
     from .reference_data import PROJECT_ROOT
-    ref_dtl_video = str(PROJECT_ROOT / "reference_data" / swing_type / f"tiger_2000_{swing_type}_dtl.mov")
-    ref_fo_video = str(PROJECT_ROOT / "reference_data" / swing_type / f"tiger_2000_{swing_type}_fo.mov")
-    ref_phase_images = {
-        "dtl": _extract_ref_phase_frame_images(
-            ref_dtl_video, dtl_ref, upload_dir, upload_id, "dtl"
-        ),
-        "fo": _extract_ref_phase_frame_images(
-            ref_fo_video, fo_ref, upload_dir, upload_id, "fo"
-        ),
-    }
+    ref_phase_images = {}
+    for view in views:
+        ref_video = str(
+            PROJECT_ROOT / "reference_data" / swing_type
+            / f"tiger_2000_{swing_type}_{view}.mov"
+        )
+        ref_phase_images[view] = _extract_ref_phase_frame_images(
+            ref_video, ref_angles[view], upload_dir, upload_id, view
+        )
 
     processing_time = round(time.time() - start_time, 1)
     logger.info(f"Analysis complete in {processing_time}s")
 
     # Build phase frames summary
-    phase_frames = {
-        "dtl": {k: v["frame"] for k, v in dtl_phases.items()},
-        "fo": {k: v["frame"] for k, v in fo_phases.items()},
-    }
+    phase_frames = {}
+    for view in views:
+        phase_frames[view] = {k: v["frame"] for k, v in phases[view].items()}
 
     # Build video URLs for the frontend
-    video_urls = {
-        "dtl": f"/uploads/{os.path.basename(dtl_path)}",
-        "fo": f"/uploads/{os.path.basename(fo_path)}",
-    }
+    video_urls = {}
+    for view in views:
+        video_urls[view] = f"/uploads/{os.path.basename(video_paths[view])}"
 
     # Reference video URLs (Tiger)
-    ref_video_urls = {
-        "dtl": f"/reference/{swing_type}/tiger_2000_{swing_type}_dtl.mov",
-        "fo": f"/reference/{swing_type}/tiger_2000_{swing_type}_fo.mov",
-    }
+    ref_video_urls = {}
+    for view in views:
+        ref_video_urls[view] = (
+            f"/reference/{swing_type}/tiger_2000_{swing_type}_{view}.mov"
+        )
 
     return {
         "status": "success",

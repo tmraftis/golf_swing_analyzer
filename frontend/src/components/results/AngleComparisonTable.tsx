@@ -53,7 +53,8 @@ export default function AngleComparisonTable({
 
   // Build rows for the active phase across both views
   const rows: AngleRow[] = [];
-  for (const view of ["dtl", "fo"] as const) {
+  const availableViews = (["dtl", "fo"] as const).filter(v => userAngles[v]);
+  for (const view of availableViews) {
     const phaseData = userAngles[view]?.[activePhase];
     const refData = referenceAngles[view]?.[activePhase];
     if (!phaseData) continue;

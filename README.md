@@ -2,34 +2,35 @@
 
 **"Swing pure"**
 
-Compare your golf swing to Tiger Woods' iconic 2000 iron swing using computer vision. Upload down-the-line (DTL) and face-on (FO) videos, and get back angle comparisons, top 3 faults, and drill recommendations — all in under 20 seconds with GPU acceleration.
+Compare your golf swing to Tiger Woods' iconic 2000 iron swing using computer vision. Choose a camera angle (down-the-line or face-on), upload a single video, and get back angle comparisons, top 3 faults, and drill recommendations — all in under 15 seconds with GPU acceleration.
 
-**Current status:** Phase 4 in progress. Upload videos, get AI-powered swing analysis with side-by-side video comparison against Tiger Woods, phase-by-phase navigation, angle comparison tables, and coaching feedback. Toggleable skeleton overlay tracks your body in real-time during video playback (frame-by-frame on user video, phase-only on Tiger). Phase frame images extracted server-side as JPEGs for instant phase/view switching with zero seek latency. GPU-accelerated landmark extraction via Modal runs both videos in parallel on T4 GPUs. Server-side video compression (ffmpeg H.264 ~4Mbps) reduces storage by ~73% and speeds up video streaming. Authentication via PropelAuth with Google OAuth and Magic Link sign-in — live in both local dev and production (`swingpure.ai`). Phase detection uses preceding-address validation to prevent post-swing walking from being misidentified as the backswing. Angle comparison uses wraparound-aware deltas for atan2-based angles (shoulder/hip line), fixing incorrect 346° deltas that should be ~14°. V1 is iron-only; driver support is planned for a future release.
+**Current status:** Phase 4 in progress. Upload a single video (DTL or FO), get AI-powered swing analysis with side-by-side video comparison against Tiger Woods, phase-by-phase navigation, angle comparison tables, and coaching feedback. Toggleable skeleton overlay tracks your body in real-time during video playback (frame-by-frame on user video, phase-only on Tiger). Phase frame images extracted server-side as JPEGs for instant phase switching with zero seek latency. GPU-accelerated landmark extraction via Modal runs on T4 GPUs. Server-side video compression (ffmpeg H.264 ~4Mbps) reduces storage by ~73% and speeds up video streaming. Authentication via PropelAuth with Google OAuth and Magic Link sign-in — live in both local dev and production (`swingpure.ai`). Phase detection uses preceding-address validation to prevent post-swing walking from being misidentified as the backswing. Angle comparison uses wraparound-aware deltas for atan2-based angles (shoulder/hip line), fixing incorrect 346° deltas that should be ~14°. V1 is iron-only; driver support is planned for a future release.
 
 ---
 
 ## How It Works
 
 1. **Sign in** — Google OAuth or Magic Link via PropelAuth
-2. **Upload two videos** — Down-the-line (DTL) and face-on (FO) angles of your swing
-2. **Extract landmarks** — MediaPipe Pose Landmarker (heavy model, 33 landmarks) processes every 2nd frame
-3. **Detect phases** — Algorithm auto-detects address, top of backswing, impact, and follow-through from wrist trajectory
-4. **Calculate angles** — Golf-specific angles computed at each phase (shoulder turn, hip rotation, spine tilt, X-factor, wrist cock, knee flex, etc.)
-5. **Compare to Tiger** — User angles compared against Tiger Woods' 2000 iron reference data using weighted deltas
-6. **Get coaching feedback** — Top 3 areas for improvement with severity ratings, descriptions, and practice drills
+2. **Choose a camera angle** — Down-the-line (DTL) or face-on (FO)
+3. **Upload one video** — A single swing video from your chosen angle
+3. **Extract landmarks** — MediaPipe Pose Landmarker (heavy model, 33 landmarks) processes every 2nd frame
+4. **Detect phases** — Algorithm auto-detects address, top of backswing, impact, and follow-through from wrist trajectory
+5. **Calculate angles** — Golf-specific angles computed at each phase (shoulder turn, hip rotation, spine tilt, X-factor, wrist cock, knee flex, etc.)
+6. **Compare to Tiger** — User angles compared against Tiger Woods' 2000 iron reference data using weighted deltas
+7. **Get coaching feedback** — Top 3 areas for improvement with severity ratings, descriptions, and practice drills
 
 ```
-Upload (.mov/.mp4 × 2)
+Select view (DTL or FO) + Upload (.mov/.mp4 × 1)
     │
     ▼
-POST /api/upload  →  Save files, compress (ffmpeg), return upload_id
+POST /api/upload  →  Save file, compress (ffmpeg), return upload_id
     │
     ▼
-POST /api/analyze/{upload_id}
+POST /api/analyze/{upload_id}  (body: { view: "dtl" | "fo" })
     │
-    ├─ Extract landmarks (DTL + FO)     ~5-8s (Modal GPU, warm start)
-    │                                    ~15-25s each (local CPU, sequential)
-    ├─ Detect swing phases               ~1s
+    ├─ Extract landmarks (single view)   ~3-5s (Modal GPU, warm start)
+    │                                     ~15-25s (local CPU)
+    ├─ Detect swing phases                ~0.5s
     ├─ Calculate angles                   ~0.5s
     ├─ Load Tiger reference data          cached
     ├─ Compute deltas                     ~0.1s
@@ -43,9 +44,9 @@ Response: user_angles, reference_angles, deltas,
           phase_images (JPEG snapshots)
     │
     ▼
-/results/{upload_id}  →  Side-by-side video comparison,
-                          phase navigation, angle table,
-                          coaching feedback cards
+/results/{upload_id}?view=dtl  →  Side-by-side video comparison,
+                                   phase navigation, angle table,
+                                   coaching feedback cards
 ```
 
 ---
@@ -84,13 +85,12 @@ golf_swing_analyzer/
 │   │   │   ├── FeatureCards.tsx            # 3 value proposition cards
 │   │   │   ├── SwingTypeSelector.tsx       # Iron (active) / Driver ("Coming Soon")
 │   │   │   ├── VideoDropZone.tsx           # Drag-and-drop upload area
-│   │   │   ├── UploadForm.tsx             # Upload → analyze → redirect (sends auth token)
+│   │   │   ├── UploadForm.tsx             # View selector + upload → analyze → redirect (sends auth token)
 │   │   │   ├── Button.tsx                 # Branded button component
 │   │   │   └── results/                   # Results dashboard components
 │   │   │       ├── ResultsDashboard.tsx   # Main orchestrator (state, layout)
-│   │   │       ├── VideoComparison.tsx    # Side-by-side video player with phase seeking (all views preloaded)
+│   │   │       ├── VideoComparison.tsx    # Side-by-side video player with phase seeking (single view)
 │   │   │       ├── PhaseTimeline.tsx      # Horizontal 4-phase navigator
-│   │   │       ├── ViewToggle.tsx         # DTL/FO segmented control
 │   │   │       ├── AngleComparisonTable.tsx # Angle comparison table (collapsible)
 │   │   │       ├── SkeletonOverlay.tsx    # Canvas overlay: frame-by-frame skeleton on video
 │   │   │       ├── DifferenceCard.tsx     # Coaching feedback card
@@ -247,9 +247,10 @@ Set `NEXT_PUBLIC_API_URL=http://localhost:8000` in `frontend/.env.local` (alread
 2. Click "Get Started" to sign up via Google or Magic Link
 3. After signing in, you'll land on the upload page
 4. Select "Iron" as the swing type
-5. Upload a down-the-line (DTL) and face-on (FO) video of your swing
-6. Click "Submit for Analysis" — takes ~10-15s with Modal, ~50s without
-7. View your results dashboard: side-by-side video comparison against Tiger, phase-by-phase navigation, angle comparisons, and coaching tips
+5. Choose your camera angle — Down the Line (DTL) or Face On (FO)
+6. Upload a video of your swing from the selected angle
+7. Click "Submit for Analysis" — takes ~5-10s with Modal, ~15-25s without
+8. View your results dashboard: side-by-side video comparison against Tiger, phase-by-phase navigation, angle comparisons, and coaching tips
 
 ---
 
@@ -302,15 +303,15 @@ Health check. Returns server status and whether the MediaPipe model is available
 
 ### `POST /api/upload` *(auth required)*
 
-Upload two swing videos for analysis. Requires `Authorization: Bearer <token>` header.
+Upload a single swing video for analysis. Requires `Authorization: Bearer <token>` header.
 
 **Request:** `multipart/form-data`
 
 | Field | Type | Required | Description |
 |-------|------|----------|-------------|
 | `swing_type` | string | Yes | `"iron"` (only valid value in v1) |
-| `video_dtl` | file | Yes | Down-the-line video (.mov/.mp4, max 30s) |
-| `video_fo` | file | Yes | Face-on video (.mov/.mp4, max 30s) |
+| `view` | string | Yes | `"dtl"` (down-the-line) or `"fo"` (face-on) |
+| `video` | file | Yes | Swing video (.mov/.mp4, max 30s) |
 
 **Success (200):**
 ```json
@@ -319,22 +320,21 @@ Upload two swing videos for analysis. Requires `Authorization: Bearer <token>` h
   "upload_id": "c524d280-57ec-4944-be20-7269cb66a63a",
   "swing_type": "iron",
   "files": {
-    "dtl": { "filename": "..._dtl.mp4", "size_bytes": 8365277, "content_type": "video/quicktime" },
-    "fo": { "filename": "..._fo.mp4", "size_bytes": 9733611, "content_type": "video/quicktime" }
+    "dtl": { "filename": "..._dtl.mp4", "size_bytes": 8365277, "content_type": "video/quicktime" }
   },
-  "message": "Videos uploaded successfully. Call POST /api/analyze/{upload_id} to run analysis."
+  "message": "Video uploaded successfully. Call POST /api/analyze/{upload_id} to run analysis."
 }
 ```
 
-**Errors:** `400` for invalid swing type or file type, `401` for missing/invalid auth token.
+**Errors:** `400` for invalid swing type, view, or file type, `401` for missing/invalid auth token.
 
 ### `POST /api/analyze/{upload_id}` *(auth required)*
 
-Run the full analysis pipeline on previously uploaded videos. Processing takes ~10-15s with Modal GPU, ~50s with local CPU. Requires `Authorization: Bearer <token>` header.
+Run the analysis pipeline on a previously uploaded video. Processing takes ~5-10s with Modal GPU, ~15-25s with local CPU. Requires `Authorization: Bearer <token>` header.
 
 **Request body:**
 ```json
-{ "swing_type": "iron" }
+{ "swing_type": "iron", "view": "dtl" }
 ```
 
 **Success (200):**
@@ -343,48 +343,44 @@ Run the full analysis pipeline on previously uploaded videos. Processing takes ~
   "status": "success",
   "upload_id": "c524d280-...",
   "swing_type": "iron",
-  "processing_time_sec": 50.8,
+  "processing_time_sec": 12.3,
   "user_angles": {
-    "dtl": { "address": { "frame": 0, "angles": { "spine_angle_dtl": 159.7, ... } }, ... },
-    "fo": { "top": { "frame": 20, "angles": { "shoulder_line_angle": 95.7, ... } }, ... }
+    "dtl": { "address": { "frame": 0, "angles": { "spine_angle_dtl": 159.7, ... } }, ... }
   },
   "reference_angles": {
-    "dtl": { "address": { "angles": { "spine_angle_dtl": 18.9, ... } }, ... },
-    "fo": { ... }
+    "dtl": { "address": { "angles": { "spine_angle_dtl": 18.9, ... } }, ... }
   },
   "deltas": {
-    "dtl": { "address": { "spine_angle_dtl": 140.8, ... }, ... },
-    "fo": { ... }
+    "dtl": { "address": { "spine_angle_dtl": 140.8, ... }, ... }
   },
   "top_differences": [
     {
       "rank": 1,
-      "angle_name": "right_elbow",
-      "phase": "top",
-      "view": "fo",
-      "user_value": 7.4,
-      "reference_value": 164.7,
-      "delta": -157.3,
-      "severity": "moderate",
-      "title": "Right Elbow Angle Difference at Top of Backswing",
-      "description": "Your right elbow angle at top of backswing is 7.4 degrees compared to Tiger's 164.7 degrees...",
-      "coaching_tip": "Focus on matching Tiger's right elbow angle at the top of backswing position..."
+      "angle_name": "spine_angle_dtl",
+      "phase": "address",
+      "view": "dtl",
+      "user_value": 159.7,
+      "reference_value": 18.9,
+      "delta": 140.8,
+      "severity": "major",
+      "title": "Spine Angle Difference at Address",
+      "description": "Your spine angle at address is 159.7 degrees compared to Tiger's 18.9 degrees...",
+      "coaching_tip": "Focus on matching Tiger's spine angle at address..."
     },
     { "rank": 2, "..." : "..." },
     { "rank": 3, "..." : "..." }
   ],
   "phase_frames": {
-    "dtl": { "address": 0, "top": 7, "impact": 11, "follow_through": 18 },
-    "fo": { "address": 7, "top": 20, "impact": 26, "follow_through": 33 }
+    "dtl": { "address": 0, "top": 7, "impact": 11, "follow_through": 18 }
   }
 }
 ```
 
 **Errors:** `404` (upload not found), `422` (pipeline failure), `500` (unexpected error).
 
-### `GET /api/analysis/{upload_id}` *(auth required)*
+### `GET /api/analysis/{upload_id}?view=dtl` *(auth required)*
 
-Retrieve a previously computed analysis result from cache. Requires `Authorization: Bearer <token>` header.
+Retrieve a previously computed analysis result from cache. Requires `Authorization: Bearer <token>` header. The `view` query param specifies which camera angle's results to retrieve (defaults to `"dtl"`).
 
 **Success (200):** Same schema as `POST /api/analyze`.
 
@@ -398,7 +394,7 @@ The pipeline runs as a sequence of steps, each with error handling and logging:
 
 | Step | Module | What it does | Time (Modal) | Time (local) |
 |------|--------|-------------|:---:|:---:|
-| 1 | `modal_extractor.py` / `landmark_extractor.py` | MediaPipe pose extraction (parallel on GPU or sequential on CPU) | ~5-8s total (warm) | ~15-25s × 2 |
+| 1 | `modal_extractor.py` / `landmark_extractor.py` | MediaPipe pose extraction (single video on GPU or CPU) | ~3-5s (warm) | ~15-25s |
 | 2 | `phase_detector.py` | Auto-detect address, top, impact, follow-through | ~0.5s | ~0.5s |
 | 3 | `angle_calculator.py` | Compute golf-specific angles at each phase | ~0.5s | ~0.5s |
 | 4 | `reference_data.py` | Load Tiger Woods reference (cached with `lru_cache`) | instant | instant |
@@ -420,7 +416,7 @@ Differences are ranked using **weighted absolute deltas**. Biomechanically impor
 | Left elbow @ impact | 1.1x |
 | All others | 1.0x |
 
-The top 3 differences are selected with **view balance** — no more than 2 from the same camera angle (DTL or FO).
+The top 3 differences are selected with **view balance** — when both views are analyzed, no more than 2 from the same camera angle; when a single view is analyzed, all 3 can come from that view.
 
 ### Feedback Engine
 
@@ -442,7 +438,7 @@ Videos are validated in the browser before upload:
 1. **File type** — must be `.mp4` or `.mov` (checks MIME type with extension fallback)
 2. **File size** — max 100MB
 3. **Duration** — max 30 seconds (read via HTML5 `<video>` element metadata)
-4. **Both angles required** — submit button disabled until both DTL and FO are valid
+4. **Video required** — submit button disabled until a valid video is provided for the selected view
 
 ---
 
@@ -507,10 +503,10 @@ python scripts/build_reference_json.py
 
 - **Frame stepping (every 2nd frame)** — cuts processing time roughly in half while maintaining sufficient resolution for angle calculation
 - **Thread pool execution** — analysis runs in `run_in_executor` to avoid blocking the FastAPI event loop
-- **In-memory result caching** — analysis results are cached by upload_id for instant retrieval on subsequent requests
+- **In-memory result caching** — analysis results are cached by `{upload_id}_{view}` for instant retrieval on subsequent requests; same upload can have separate DTL and FO results
 - **View-specific calculations** — some angles are only meaningful from one camera angle (e.g., X-factor from FO, spine angle from DTL)
 - **Weighted ranking** — biomechanically important angles (spine angle at impact, lead arm at top) are weighted higher when selecting top faults
-- **View-balanced top 3** — max 2 differences from the same camera angle ensures balanced feedback
+- **View-balanced top 3** — when both views are analyzed, max 2 differences from the same camera angle; when single-view, all 3 can come from that view
 - **Auto-trigger analysis after upload** — frontend automatically starts analysis after successful upload for a seamless UX
 - **`swing_type` field in all data** — enables future expansion to driver, fairway woods, etc. without schema changes
 - **Reference data organized by club** — `reference_data/iron/`, with `reference_data/driver/` reserved

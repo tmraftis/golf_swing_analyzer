@@ -25,8 +25,8 @@ def _validate_file(file: UploadFile, label: str) -> None:
 @router.post("/upload", response_model=UploadResponse)
 async def upload_videos(
     swing_type: str = Form(...),
-    video_dtl: UploadFile = File(...),
-    video_fo: UploadFile = File(...),
+    view: str = Form(...),
+    video: UploadFile = File(...),
     current_user=Depends(require_user),
 ):
     # Validate swing type
@@ -36,32 +36,32 @@ async def upload_videos(
             f"Invalid swing_type '{swing_type}'. Only 'iron' is supported in v1.",
         )
 
-    # Validate files
-    _validate_file(video_dtl, "video_dtl")
-    _validate_file(video_fo, "video_fo")
+    # Validate view
+    if view not in ("dtl", "fo"):
+        raise HTTPException(
+            400,
+            f"Invalid view '{view}'. Must be 'dtl' or 'fo'.",
+        )
+
+    # Validate file
+    _validate_file(video, f"video_{view}")
 
     # Generate upload ID and save
     upload_id = str(uuid.uuid4())
-    logger.info(f"Upload {upload_id} by user {current_user.user_id}")
+    logger.info(f"Upload {upload_id} by user {current_user.user_id} (view={view})")
 
-    dtl_filename, dtl_size = await save_upload(upload_id, "dtl", video_dtl)
-    fo_filename, fo_size = await save_upload(upload_id, "fo", video_fo)
+    filename, size = await save_upload(upload_id, view, video)
 
     return UploadResponse(
         status="success",
         upload_id=upload_id,
         swing_type=swing_type,
         files={
-            "dtl": FileInfo(
-                filename=dtl_filename,
-                size_bytes=dtl_size,
-                content_type=video_dtl.content_type or "video/mp4",
-            ),
-            "fo": FileInfo(
-                filename=fo_filename,
-                size_bytes=fo_size,
-                content_type=video_fo.content_type or "video/mp4",
+            view: FileInfo(
+                filename=filename,
+                size_bytes=size,
+                content_type=video.content_type or "video/mp4",
             ),
         },
-        message="Videos uploaded successfully. Call POST /api/analyze/{upload_id} to run analysis.",
+        message=f"Video uploaded successfully. Call POST /api/analyze/{upload_id} to run analysis.",
     )

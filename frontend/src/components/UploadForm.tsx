@@ -3,16 +3,16 @@
 import { useReducer } from "react";
 import { useRouter } from "next/navigation";
 import { useUser } from "@propelauth/nextjs/client";
-import type { SwingType, VideoFile, UploadResponse } from "@/types";
+import type { SwingType, VideoAngle, VideoFile, UploadResponse } from "@/types";
 import SwingTypeSelector from "./SwingTypeSelector";
 import VideoDropZone from "./VideoDropZone";
 import Button from "./Button";
-import { uploadVideos, analyzeSwing } from "@/lib/api";
+import { uploadVideo, analyzeSwing } from "@/lib/api";
 
 interface UploadState {
   swingType: SwingType;
-  dtlFile: VideoFile | null;
-  foFile: VideoFile | null;
+  view: VideoAngle;
+  videoFile: VideoFile | null;
   isUploading: boolean;
   isAnalyzing: boolean;
   uploadResult: UploadResponse | null;
@@ -22,10 +22,9 @@ interface UploadState {
 
 type UploadAction =
   | { type: "SET_SWING_TYPE"; payload: SwingType }
-  | { type: "SET_DTL_FILE"; payload: VideoFile }
-  | { type: "SET_FO_FILE"; payload: VideoFile }
-  | { type: "REMOVE_DTL" }
-  | { type: "REMOVE_FO" }
+  | { type: "SET_VIEW"; payload: VideoAngle }
+  | { type: "SET_VIDEO"; payload: VideoFile }
+  | { type: "REMOVE_VIDEO" }
   | { type: "UPLOAD_START" }
   | { type: "UPLOAD_SUCCESS"; payload: UploadResponse }
   | { type: "UPLOAD_ERROR"; payload: string }
@@ -34,8 +33,8 @@ type UploadAction =
 
 const initialState: UploadState = {
   swingType: "iron",
-  dtlFile: null,
-  foFile: null,
+  view: "dtl",
+  videoFile: null,
   isUploading: false,
   isAnalyzing: false,
   uploadResult: null,
@@ -47,31 +46,25 @@ function reducer(state: UploadState, action: UploadAction): UploadState {
   switch (action.type) {
     case "SET_SWING_TYPE":
       return { ...state, swingType: action.payload };
-    case "SET_DTL_FILE":
+    case "SET_VIEW":
       return {
         ...state,
-        dtlFile: action.payload,
+        view: action.payload,
+        videoFile: null,
         uploadResult: null,
         uploadError: null,
       };
-    case "SET_FO_FILE":
+    case "SET_VIDEO":
       return {
         ...state,
-        foFile: action.payload,
+        videoFile: action.payload,
         uploadResult: null,
         uploadError: null,
       };
-    case "REMOVE_DTL":
+    case "REMOVE_VIDEO":
       return {
         ...state,
-        dtlFile: null,
-        uploadResult: null,
-        uploadError: null,
-      };
-    case "REMOVE_FO":
-      return {
-        ...state,
-        foFile: null,
+        videoFile: null,
         uploadResult: null,
         uploadError: null,
       };
@@ -102,22 +95,21 @@ export default function UploadForm() {
 
   const canSubmit =
     state.swingType === "iron" &&
-    state.dtlFile?.validated &&
-    state.foFile?.validated &&
+    state.videoFile?.validated &&
     !state.isUploading &&
     !state.isAnalyzing;
 
   async function handleSubmit() {
-    if (!state.dtlFile || !state.foFile) return;
+    if (!state.videoFile) return;
 
     // Step 1: Upload
     dispatch({ type: "UPLOAD_START" });
     let uploadResult: UploadResponse;
     try {
-      uploadResult = await uploadVideos(
+      uploadResult = await uploadVideo(
         state.swingType,
-        state.dtlFile.file,
-        state.foFile.file,
+        state.view,
+        state.videoFile.file,
         accessToken || undefined
       );
       dispatch({ type: "UPLOAD_SUCCESS", payload: uploadResult });
@@ -133,8 +125,13 @@ export default function UploadForm() {
     if (uploadResult.upload_id) {
       dispatch({ type: "ANALYSIS_START" });
       try {
-        await analyzeSwing(uploadResult.upload_id, state.swingType, accessToken || undefined);
-        router.push(`/results/${uploadResult.upload_id}`);
+        await analyzeSwing(
+          uploadResult.upload_id,
+          state.swingType,
+          state.view,
+          accessToken || undefined
+        );
+        router.push(`/results/${uploadResult.upload_id}?view=${state.view}`);
       } catch (err) {
         dispatch({
           type: "ANALYSIS_ERROR",
@@ -169,12 +166,12 @@ export default function UploadForm() {
                 clipRule="evenodd"
               />
             </svg>
-            <span>Videos uploaded successfully</span>
+            <span>Video uploaded successfully</span>
           </div>
           <div className="flex items-center gap-3">
             <div className="w-4 h-4 rounded-full border-2 border-t-pastel-yellow border-cream/10 animate-spin shrink-0" />
             <span className="text-cream/60">
-              Running AI analysis (~30-50 seconds)
+              Running AI analysis (~15-25 seconds)
             </span>
           </div>
         </div>
@@ -202,34 +199,94 @@ export default function UploadForm() {
         />
       </div>
 
-      {/* Step 2: Video uploads */}
+      {/* Step 2: Camera angle */}
       <div>
-        <h2 className="text-lg font-semibold mb-1">Upload Videos</h2>
+        <h2 className="text-lg font-semibold mb-1">Camera Angle</h2>
         <p className="text-sm text-cream/50 mb-4">
-          We need two angles of your swing for a complete analysis.
+          Choose which angle you filmed your swing from.
         </p>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <VideoDropZone
-            angle="dtl"
-            label="Down the Line"
-            hint="Film from behind the golfer"
-            file={state.dtlFile}
-            onFileValidated={(v) =>
-              dispatch({ type: "SET_DTL_FILE", payload: v })
-            }
-            onRemove={() => dispatch({ type: "REMOVE_DTL" })}
-          />
-          <VideoDropZone
-            angle="fo"
-            label="Face On"
-            hint="Film facing the golfer"
-            file={state.foFile}
-            onFileValidated={(v) =>
-              dispatch({ type: "SET_FO_FILE", payload: v })
-            }
-            onRemove={() => dispatch({ type: "REMOVE_FO" })}
-          />
+        <div className="grid grid-cols-2 gap-4">
+          <button
+            onClick={() => dispatch({ type: "SET_VIEW", payload: "dtl" })}
+            className={`relative rounded-xl border-2 p-6 text-left transition-colors ${
+              state.view === "dtl"
+                ? "border-forest-green bg-forest-green/10"
+                : "border-cream/15 hover:border-cream/30"
+            }`}
+          >
+            <h3 className="text-lg font-semibold mb-1">Down the Line</h3>
+            <p className="text-sm text-cream/50">
+              Camera behind the golfer, looking at the target line
+            </p>
+            {state.view === "dtl" && (
+              <div className="absolute top-4 right-4">
+                <svg
+                  className="w-5 h-5 text-forest-green"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </div>
+            )}
+          </button>
+
+          <button
+            onClick={() => dispatch({ type: "SET_VIEW", payload: "fo" })}
+            className={`relative rounded-xl border-2 p-6 text-left transition-colors ${
+              state.view === "fo"
+                ? "border-forest-green bg-forest-green/10"
+                : "border-cream/15 hover:border-cream/30"
+            }`}
+          >
+            <h3 className="text-lg font-semibold mb-1">Face On</h3>
+            <p className="text-sm text-cream/50">
+              Camera facing the golfer from the target side
+            </p>
+            {state.view === "fo" && (
+              <div className="absolute top-4 right-4">
+                <svg
+                  className="w-5 h-5 text-forest-green"
+                  fill="currentColor"
+                  viewBox="0 0 20 20"
+                >
+                  <path
+                    fillRule="evenodd"
+                    d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z"
+                    clipRule="evenodd"
+                  />
+                </svg>
+              </div>
+            )}
+          </button>
         </div>
+      </div>
+
+      {/* Step 3: Video upload */}
+      <div>
+        <h2 className="text-lg font-semibold mb-1">Upload Video</h2>
+        <p className="text-sm text-cream/50 mb-4">
+          Upload your {state.view === "dtl" ? "down-the-line" : "face-on"} swing
+          video.
+        </p>
+        <VideoDropZone
+          angle={state.view}
+          label={state.view === "dtl" ? "Down the Line" : "Face On"}
+          hint={
+            state.view === "dtl"
+              ? "Film from behind the golfer"
+              : "Film facing the golfer"
+          }
+          file={state.videoFile}
+          onFileValidated={(v) =>
+            dispatch({ type: "SET_VIDEO", payload: v })
+          }
+          onRemove={() => dispatch({ type: "REMOVE_VIDEO" })}
+        />
       </div>
 
       {/* Error messages */}

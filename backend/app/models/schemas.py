@@ -20,6 +20,7 @@ class UploadResponse(BaseModel):
 
 class AnalyzeRequest(BaseModel):
     swing_type: str = "iron"
+    view: str = "dtl"  # "dtl" or "fo"
 
 
 class TopDifference(BaseModel):
