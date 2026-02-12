@@ -17,3 +17,70 @@ body {
   background: var(--color-background);
   color: var(--color-foreground);
 }
+
+/* Golf swing silhouette cross-fade animation — 5s cycle, 4 poses */
+/* Each pose: visible 20%, transition 5% on each side = 25% per pose */
+.swing-pose-1 { animation: swing-pose-1 5s ease-in-out infinite; }
+.swing-pose-2 { animation: swing-pose-2 5s ease-in-out infinite; }
+.swing-pose-3 { animation: swing-pose-3 5s ease-in-out infinite; }
+.swing-pose-4 { animation: swing-pose-4 5s ease-in-out infinite; }
+
+@keyframes swing-pose-1 {
+  0%   { opacity: 1; }
+  20%  { opacity: 1; }
+  25%  { opacity: 0; }
+  95%  { opacity: 0; }
+  100% { opacity: 1; }
+}
+@keyframes swing-pose-2 {
+  0%   { opacity: 0; }
+  20%  { opacity: 0; }
+  25%  { opacity: 1; }
+  45%  { opacity: 1; }
+  50%  { opacity: 0; }
+  100% { opacity: 0; }
+}
+@keyframes swing-pose-3 {
+  0%   { opacity: 0; }
+  45%  { opacity: 0; }
+  50%  { opacity: 1; }
+  70%  { opacity: 1; }
+  75%  { opacity: 0; }
+  100% { opacity: 0; }
+}
+@keyframes swing-pose-4 {
+  0%   { opacity: 0; }
+  70%  { opacity: 0; }
+  75%  { opacity: 1; }
+  95%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* Subtle glow pulse behind silhouette */
+.glow-pulse {
+  animation: glow-pulse 3s ease-in-out infinite;
+}
+
+@keyframes glow-pulse {
+  0%, 100% { opacity: 0.04; }
+  50% { opacity: 0.12; }
+}
+
+/* Animated ellipsis for loading steps — fixed width to prevent layout shift */
+.loading-ellipsis {
+  display: inline-block;
+  width: 1.2em;
+  text-align: left;
+}
+
+.loading-ellipsis::after {
+  content: "";
+  animation: ellipsis 1.5s steps(4, end) infinite;
+}
+
+@keyframes ellipsis {
+  0%  { content: ""; }
+  25% { content: "."; }
+  50% { content: ".."; }
+  75% { content: "..."; }
+}

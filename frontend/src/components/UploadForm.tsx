@@ -6,6 +6,7 @@ import { useUser } from "@propelauth/nextjs/client";
 import type { SwingType, VideoAngle, VideoFile, UploadResponse } from "@/types";
 import SwingTypeSelector from "./SwingTypeSelector";
 import VideoDropZone from "./VideoDropZone";
+import SwingLoadingAnimation from "./SwingLoadingAnimation";
 import Button from "./Button";
 import { uploadVideo, analyzeSwing } from "@/lib/api";
 
@@ -141,52 +142,27 @@ export default function UploadForm() {
     }
   }
 
-  // Analyzing state — show progress
-  if (state.isAnalyzing) {
+  // Loading state — show swing animation during upload AND analysis
+  if (state.isUploading || state.isAnalyzing) {
     return (
-      <div className="rounded-xl border-2 border-pastel-yellow/30 bg-pastel-yellow/5 p-8 text-center">
-        <div className="relative w-16 h-16 mx-auto mb-6">
-          <div className="absolute inset-0 rounded-full border-4 border-cream/10" />
-          <div className="absolute inset-0 rounded-full border-4 border-t-pastel-yellow animate-spin" />
-        </div>
-        <h3 className="text-xl font-semibold mb-2">Analyzing Your Swing</h3>
-        <p className="text-cream/50 mb-6">
-          Extracting landmarks, detecting phases, and comparing angles...
-        </p>
-        <div className="space-y-3 text-sm text-cream/40 max-w-sm mx-auto">
-          <div className="flex items-center gap-3">
-            <svg
-              className="w-4 h-4 text-forest-green shrink-0"
-              fill="currentColor"
-              viewBox="0 0 20 20"
-            >
-              <path
-                fillRule="evenodd"
-                d="M10 18a8 8 0 100-16 8 8 0 000 16zm3.857-9.809a.75.75 0 00-1.214-.882l-3.483 4.79-1.88-1.88a.75.75 0 10-1.06 1.061l2.5 2.5a.75.75 0 001.137-.089l4-5.5z"
-                clipRule="evenodd"
-              />
-            </svg>
-            <span>Video uploaded successfully</span>
-          </div>
-          <div className="flex items-center gap-3">
-            <div className="w-4 h-4 rounded-full border-2 border-t-pastel-yellow border-cream/10 animate-spin shrink-0" />
-            <span className="text-cream/60">
-              Running AI analysis (~15-25 seconds)
-            </span>
-          </div>
-        </div>
-
-        {state.analysisError && (
-          <div className="mt-6 rounded-lg border border-cardinal-red/50 bg-cardinal-red/5 p-4">
-            <p className="text-sm text-cardinal-red">{state.analysisError}</p>
-          </div>
-        )}
-      </div>
+      <SwingLoadingAnimation
+        phase={state.isAnalyzing ? "analyzing" : "uploading"}
+        analysisError={state.analysisError}
+      />
     );
   }
 
   return (
     <div className="space-y-8">
+      {/* Page heading */}
+      <div>
+        <h1 className="text-3xl font-bold mb-2">Upload Your Swing</h1>
+        <p className="text-cream/50">
+          Select your swing type and camera angle, then upload a video of your
+          swing.
+        </p>
+      </div>
+
       {/* Step 1: Swing type */}
       <div>
         <h2 className="text-lg font-semibold mb-1">Swing Type</h2>
