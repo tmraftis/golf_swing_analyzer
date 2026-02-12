@@ -123,17 +123,19 @@ def rank_differences(
     # Sort by weighted absolute delta (largest first)
     all_diffs.sort(key=lambda d: d["weighted_abs"], reverse=True)
 
-    # Select top 3 with view balance (max 2 from same view)
+    # Select top 3 with view balance (max 2 from same view when multi-view)
+    available_views = list(deltas.keys())
+    max_per_view = 2 if len(available_views) > 1 else 3
     selected = []
-    view_counts = {"dtl": 0, "fo": 0}
+    view_counts = {v: 0 for v in available_views}
 
     for diff in all_diffs:
         if len(selected) >= 3:
             break
         view = diff["view"]
-        if view_counts[view] >= 2:
+        if view_counts.get(view, 0) >= max_per_view:
             continue
-        view_counts[view] += 1
+        view_counts[view] = view_counts.get(view, 0) + 1
         selected.append(diff)
 
     # Add rank numbers

@@ -14,9 +14,6 @@ import { SWING_PHASES, PHASE_LABELS } from "@/types";
 import { getVideoUrl } from "@/lib/api";
 import SkeletonOverlay from "./SkeletonOverlay";
 
-type ViewKey = "dtl" | "fo";
-const VIEWS: ViewKey[] = ["dtl", "fo"];
-
 interface VideoComparisonProps {
   videoUrls: VideoUrls;
   referenceVideoUrls: VideoUrls;
@@ -46,20 +43,12 @@ export default function VideoComparison({
   userPhaseImages,
   referencePhaseImages,
 }: VideoComparisonProps) {
-  // Refs for all 4 videos: user-dtl, user-fo, ref-dtl, ref-fo
-  const userVideoRefs = useRef<Record<ViewKey, HTMLVideoElement | null>>({
-    dtl: null,
-    fo: null,
-  });
-  const refVideoRefs = useRef<Record<ViewKey, HTMLVideoElement | null>>({
-    dtl: null,
-    fo: null,
-  });
+  const userVideoRef = useRef<HTMLVideoElement | null>(null);
+  const refVideoRef = useRef<HTMLVideoElement | null>(null);
 
   const [isPlaying, setIsPlaying] = useState(false);
   const [userTime, setUserTime] = useState(0);
   const [userDuration, setUserDuration] = useState(0);
-  const pendingPhaseRef = useRef<SwingPhase>(activePhase);
 
   // Skeleton overlay state
   const [showSkeleton, setShowSkeleton] = useState(false);
@@ -72,33 +61,21 @@ export default function VideoComparison({
   const userPhaseImage = userPhaseImages?.[activeView]?.[activePhase];
   const refPhaseImage = referencePhaseImages?.[activeView]?.[activePhase];
 
-  // Preload all phase images on mount for instant view/phase switching
+  // Preload phase images for the active view on mount
   useEffect(() => {
     const sources = [userPhaseImages, referencePhaseImages];
     for (const imageData of sources) {
       if (!imageData) continue;
-      for (const view of VIEWS) {
-        const viewImages = imageData[view];
-        if (!viewImages) continue;
-        for (const url of Object.values(viewImages)) {
-          if (url) {
-            const img = new Image();
-            img.src = getVideoUrl(url);
-          }
+      const viewImages = imageData[activeView];
+      if (!viewImages) continue;
+      for (const url of Object.values(viewImages)) {
+        if (url) {
+          const img = new Image();
+          img.src = getVideoUrl(url);
         }
       }
     }
-  }, [userPhaseImages, referencePhaseImages]);
-
-  // Helper to get the active video elements
-  const getActiveUserVideo = useCallback(
-    () => userVideoRefs.current[activeView as ViewKey],
-    [activeView]
-  );
-  const getActiveRefVideo = useCallback(
-    () => refVideoRefs.current[activeView as ViewKey],
-    [activeView]
-  );
+  }, [userPhaseImages, referencePhaseImages, activeView]);
 
   // Seek a single video, waiting for it to be ready if needed
   const seekVideo = useCallback(
@@ -116,11 +93,11 @@ export default function VideoComparison({
     []
   );
 
-  // Seek both active videos to a specific phase
+  // Seek both videos to a specific phase
   const seekVideosToPhase = useCallback(
     (phase: SwingPhase) => {
-      const userVideo = getActiveUserVideo();
-      const refVideo = getActiveRefVideo();
+      const userVideo = userVideoRef.current;
+      const refVideo = refVideoRef.current;
       const userPhaseData = userAngles[activeView]?.[phase];
       const refPhaseData = referenceAngles[activeView]?.[phase];
 
@@ -135,7 +112,7 @@ export default function VideoComparison({
       userVideo?.pause();
       refVideo?.pause();
     },
-    [activeView, userAngles, referenceAngles, seekVideo, getActiveUserVideo, getActiveRefVideo]
+    [activeView, userAngles, referenceAngles, seekVideo]
   );
 
   // Called by internal phase buttons — updates parent + seeks
@@ -149,8 +126,8 @@ export default function VideoComparison({
 
   // Sync play/pause
   const togglePlay = useCallback(() => {
-    const userVideo = getActiveUserVideo();
-    const refVideo = getActiveRefVideo();
+    const userVideo = userVideoRef.current;
+    const refVideo = refVideoRef.current;
     if (isPlaying) {
       userVideo?.pause();
       refVideo?.pause();
@@ -160,49 +137,28 @@ export default function VideoComparison({
       refVideo?.play();
       setIsPlaying(true);
     }
-  }, [isPlaying, getActiveUserVideo, getActiveRefVideo]);
+  }, [isPlaying]);
 
-  // When active view or phase changes, pause inactive videos and seek active ones
+  // When active phase changes, seek videos
   useEffect(() => {
-    pendingPhaseRef.current = activePhase;
-
-    // Pause all videos when switching views
-    for (const v of VIEWS) {
-      if (v !== activeView) {
-        userVideoRefs.current[v]?.pause();
-        refVideoRefs.current[v]?.pause();
-      }
-    }
     setIsPlaying(false);
-
     seekVideosToPhase(activePhase);
-  }, [activeView, activePhase, seekVideosToPhase]);
+  }, [activePhase, seekVideosToPhase]);
 
   // Track user video time for progress bar
   const handleTimeUpdate = useCallback(() => {
-    const userVideo = getActiveUserVideo();
+    const userVideo = userVideoRef.current;
     if (userVideo) {
       setUserTime(userVideo.currentTime);
     }
-  }, [getActiveUserVideo]);
+  }, []);
 
-  const handleLoadedMetadata = useCallback(
-    (view: ViewKey) => {
-      const video = userVideoRefs.current[view];
-      if (video && view === activeView) {
-        setUserDuration(video.duration);
-      }
-    },
-    [activeView]
-  );
-
-  // Update duration when switching views (active video may already be loaded)
-  useEffect(() => {
-    const video = userVideoRefs.current[activeView as ViewKey];
-    if (video && video.readyState >= 1) {
+  const handleLoadedMetadata = useCallback(() => {
+    const video = userVideoRef.current;
+    if (video) {
       setUserDuration(video.duration);
     }
-  }, [activeView]);
+  }, []);
 
   // When both videos end, reset playing state
   const handleEnded = useCallback(() => {
@@ -219,6 +175,9 @@ export default function VideoComparison({
 
   const progressPct = userDuration ? (userTime / userDuration) * 100 : 0;
 
+  const userVideoUrl = videoUrls[activeView];
+  const refVideoUrl = referenceVideoUrls[activeView];
+
   return (
     <div className="space-y-4">
       {/* Side-by-side videos */}
@@ -229,22 +188,19 @@ export default function VideoComparison({
             Your Swing
           </h3>
           <div className="rounded-xl overflow-hidden bg-black/30 aspect-video relative">
-            {VIEWS.map((view) => (
+            {userVideoUrl && (
               <video
-                key={`user-${view}`}
-                ref={(el) => { userVideoRefs.current[view] = el; }}
-                src={getVideoUrl(videoUrls[view])}
-                className={`w-full h-full object-contain absolute inset-0 ${
-                  view === activeView ? "visible" : "invisible"
-                }`}
+                ref={userVideoRef}
+                src={getVideoUrl(userVideoUrl)}
+                className="w-full h-full object-contain"
                 muted
                 playsInline
                 preload="auto"
-                onTimeUpdate={view === activeView ? handleTimeUpdate : undefined}
-                onLoadedMetadata={() => handleLoadedMetadata(view)}
+                onTimeUpdate={handleTimeUpdate}
+                onLoadedMetadata={handleLoadedMetadata}
                 onEnded={handleEnded}
               />
-            ))}
+            )}
             {/* Phase frame image: instant display when paused, hidden during playback */}
             {userPhaseImage && !isPlaying && (
               <img
@@ -255,7 +211,7 @@ export default function VideoComparison({
               />
             )}
             <SkeletonOverlay
-              videoRef={userVideoRefs.current[activeView as ViewKey]}
+              videoRef={userVideoRef.current}
               landmarks={userLandmarks}
               allFrameLandmarks={userFrameLandmarks}
               visible={showSkeleton}
@@ -270,20 +226,17 @@ export default function VideoComparison({
             Tiger Woods 2000
           </h3>
           <div className="rounded-xl overflow-hidden bg-black/30 aspect-video relative">
-            {VIEWS.map((view) => (
+            {refVideoUrl && (
               <video
-                key={`ref-${view}`}
-                ref={(el) => { refVideoRefs.current[view] = el; }}
-                src={getVideoUrl(referenceVideoUrls[view])}
-                className={`w-full h-full object-contain absolute inset-0 ${
-                  view === activeView ? "visible" : "invisible"
-                }`}
+                ref={refVideoRef}
+                src={getVideoUrl(refVideoUrl)}
+                className="w-full h-full object-contain"
                 muted
                 playsInline
                 preload="auto"
                 onEnded={handleEnded}
               />
-            ))}
+            )}
             {/* Phase frame image: instant display when paused, hidden during playback */}
             {refPhaseImage && !isPlaying && (
               <img
@@ -294,7 +247,7 @@ export default function VideoComparison({
               />
             )}
             <SkeletonOverlay
-              videoRef={refVideoRefs.current[activeView as ViewKey]}
+              videoRef={refVideoRef.current}
               landmarks={refLandmarks}
               visible={showSkeleton && !isPlaying}
               isPlaying={isPlaying}

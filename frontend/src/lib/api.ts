@@ -1,5 +1,5 @@
 import { API_URL } from "./constants";
-import type { SwingType, UploadResponse, AnalysisResponse } from "@/types";
+import type { SwingType, VideoAngle, UploadResponse, AnalysisResponse } from "@/types";
 
 function authHeaders(accessToken?: string): Record<string, string> {
   const headers: Record<string, string> = {};
@@ -9,16 +9,16 @@ function authHeaders(accessToken?: string): Record<string, string> {
   return headers;
 }
 
-export async function uploadVideos(
+export async function uploadVideo(
   swingType: SwingType,
-  dtlFile: File,
-  foFile: File,
+  view: VideoAngle,
+  videoFile: File,
   accessToken?: string
 ): Promise<UploadResponse> {
   const formData = new FormData();
   formData.append("swing_type", swingType);
-  formData.append("video_dtl", dtlFile);
-  formData.append("video_fo", foFile);
+  formData.append("view", view);
+  formData.append("video", videoFile);
 
   const res = await fetch(`${API_URL}/api/upload`, {
     method: "POST",
@@ -38,6 +38,7 @@ export async function uploadVideos(
 export async function analyzeSwing(
   uploadId: string,
   swingType: SwingType = "iron",
+  view: VideoAngle = "dtl",
   accessToken?: string
 ): Promise<AnalysisResponse> {
   const res = await fetch(`${API_URL}/api/analyze/${uploadId}`, {
@@ -46,7 +47,7 @@ export async function analyzeSwing(
       "Content-Type": "application/json",
       ...authHeaders(accessToken),
     },
-    body: JSON.stringify({ swing_type: swingType }),
+    body: JSON.stringify({ swing_type: swingType, view }),
   });
 
   if (!res.ok) {
@@ -59,9 +60,10 @@ export async function analyzeSwing(
 
 export async function getAnalysis(
   uploadId: string,
+  view: VideoAngle = "dtl",
   accessToken?: string
 ): Promise<AnalysisResponse> {
-  const res = await fetch(`${API_URL}/api/analysis/${uploadId}`, {
+  const res = await fetch(`${API_URL}/api/analysis/${uploadId}?view=${view}`, {
     headers: authHeaders(accessToken),
   });
 

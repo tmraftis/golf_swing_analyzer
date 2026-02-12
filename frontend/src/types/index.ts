@@ -19,10 +19,7 @@ export interface UploadResponse {
   status: "success" | "error";
   upload_id?: string;
   swing_type?: string;
-  files?: {
-    dtl: FileInfo;
-    fo: FileInfo;
-  };
+  files?: Partial<Record<VideoAngle, FileInfo>>;
   message?: string;
   detail?: string;
 }
@@ -73,10 +70,7 @@ export type PhaseLandmarks = Record<string, LandmarkPoint>;
 
 export type ViewPhaseLandmarks = Partial<Record<SwingPhase, PhaseLandmarks>>;
 
-export interface PhaseLandmarkData {
-  dtl: ViewPhaseLandmarks;
-  fo: ViewPhaseLandmarks;
-}
+export type PhaseLandmarkData = Partial<Record<VideoAngle, ViewPhaseLandmarks>>;
 
 // Frame-by-frame landmarks for continuous skeleton playback
 export interface FrameLandmark {
@@ -84,18 +78,12 @@ export interface FrameLandmark {
   lm: PhaseLandmarks; // joint positions at this frame
 }
 
-export interface AllLandmarkData {
-  dtl: FrameLandmark[];
-  fo: FrameLandmark[];
-}
+export type AllLandmarkData = Partial<Record<VideoAngle, FrameLandmark[]>>;
 
 // Phase frame images for instant switching (JPEG URLs keyed by phase)
 export type ViewPhaseImages = Partial<Record<SwingPhase, string>>;
 
-export interface PhaseImageData {
-  dtl: ViewPhaseImages;
-  fo: ViewPhaseImages;
-}
+export type PhaseImageData = Partial<Record<VideoAngle, ViewPhaseImages>>;
 
 // --- Analysis types ---
 
@@ -108,24 +96,15 @@ export interface PhaseAngles {
 
 export type ViewAngles = Partial<Record<SwingPhase, PhaseAngles>>;
 
-export interface AngleData {
-  dtl: ViewAngles;
-  fo: ViewAngles;
-}
+export type AngleData = Partial<Record<VideoAngle, ViewAngles>>;
 
 export type ViewDeltas = Partial<Record<SwingPhase, Record<string, number>>>;
 
-export interface DeltaData {
-  dtl: ViewDeltas;
-  fo: ViewDeltas;
-}
+export type DeltaData = Partial<Record<VideoAngle, ViewDeltas>>;
 
-export type PhaseFrames = Record<VideoAngle, Partial<Record<SwingPhase, number>>>;
+export type PhaseFrames = Partial<Record<VideoAngle, Partial<Record<SwingPhase, number>>>>;
 
-export interface VideoUrls {
-  dtl: string;
-  fo: string;
-}
+export type VideoUrls = Partial<Record<VideoAngle, string>>;
 
 export interface TopDifference {
   rank: number;

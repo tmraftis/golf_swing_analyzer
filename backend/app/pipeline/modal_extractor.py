@@ -1,8 +1,7 @@
-"""Call Modal for GPU-accelerated parallel landmark extraction.
+"""Call Modal for GPU-accelerated landmark extraction.
 
-Sends both DTL and FO video bytes to Modal simultaneously, waits for
-both results, and returns the landmark dicts. Falls back gracefully
-if Modal is unavailable.
+Supports both parallel dual-video extraction (DTL + FO simultaneously)
+and single-video extraction. Falls back gracefully if Modal is unavailable.
 """
 
 import logging
@@ -10,6 +9,67 @@ import logging
 from .models import LandmarkExtractionError
 
 logger = logging.getLogger(__name__)
+
+
+def extract_landmarks_single_modal(
+    video_bytes: bytes,
+    frame_step: int = 2,
+    min_detection_rate: float = 0.7,
+    target_height: int = 960,
+) -> dict:
+    """Extract landmarks from a single video via Modal.
+
+    Args:
+        video_bytes: Raw bytes of the video file.
+        frame_step: Process every Nth frame.
+        min_detection_rate: Minimum acceptable detection rate.
+        target_height: Downscale frames to this height before inference.
+
+    Returns:
+        Landmark dict with 'summary' and 'frames' keys.
+
+    Raises:
+        LandmarkExtractionError: If detection rate is too low after retry.
+        Exception: If Modal call fails for any other reason.
+    """
+    import modal
+
+    extract_fn = modal.Function.from_name(
+        "pure-landmark-extractor", "extract_landmarks"
+    )
+
+    logger.info(f"Sending video to Modal ({len(video_bytes)/1e6:.1f}MB)...")
+
+    result = extract_fn.remote(
+        video_bytes=video_bytes,
+        frame_step=frame_step,
+        min_detection_rate=min_detection_rate,
+        target_height=target_height,
+    )
+
+    # Retry once with lower threshold if detection rate too low
+    if "error" in result:
+        retry_rate = 0.5
+        logger.info(
+            f"Detection rate {result.get('detection_rate', 0)}% "
+            f"below threshold, retrying with {retry_rate}..."
+        )
+        result = extract_fn.remote(
+            video_bytes=video_bytes,
+            frame_step=frame_step,
+            min_detection_rate=retry_rate,
+            target_height=target_height,
+        )
+
+    if "error" in result:
+        raise LandmarkExtractionError("video", result.get("detection_rate", 0))
+
+    logger.info(
+        f"Modal extraction complete: "
+        f"{result['summary']['detected_frames']} frames detected"
+    )
+
+    return result
 
 
 def extract_landmarks_parallel_modal(

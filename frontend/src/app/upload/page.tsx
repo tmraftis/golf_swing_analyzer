@@ -10,8 +10,8 @@ export default async function UploadPage() {
       <div className="mx-auto max-w-2xl">
         <h1 className="text-3xl font-bold mb-2">Upload Your Swing</h1>
         <p className="text-cream/50 mb-10">
-          Select your swing type, then upload two videos of your swing. We need
-          both a down-the-line and face-on angle for a complete analysis.
+          Select your swing type and camera angle, then upload a video of your
+          swing.
         </p>
         <UploadForm />
       </div>

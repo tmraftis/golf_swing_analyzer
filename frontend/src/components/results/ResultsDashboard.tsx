@@ -3,7 +3,6 @@
 import { useState } from "react";
 import Link from "next/link";
 import type { AnalysisResponse, VideoAngle, SwingPhase } from "@/types";
-import ViewToggle from "./ViewToggle";
 import VideoComparison from "./VideoComparison";
 import PhaseTimeline from "./PhaseTimeline";
 import DifferenceCard from "./DifferenceCard";
@@ -16,7 +15,10 @@ interface ResultsDashboardProps {
 
 export default function ResultsDashboard({ analysis }: ResultsDashboardProps) {
   const [activePhase, setActivePhase] = useState<SwingPhase>("address");
-  const [activeView, setActiveView] = useState<VideoAngle>("dtl");
+
+  // Determine the single view from the data (whichever key exists)
+  const activeView: VideoAngle = analysis.user_angles.dtl ? "dtl" : "fo";
+  const viewLabel = activeView === "dtl" ? "Down the Line" : "Face On";
 
   const hasVideos = analysis.video_urls && analysis.reference_video_urls;
 
@@ -29,14 +31,9 @@ export default function ResultsDashboard({ analysis }: ResultsDashboardProps) {
           <p className="text-cream/50 text-sm">
             {analysis.swing_type.charAt(0).toUpperCase() +
               analysis.swing_type.slice(1)}{" "}
-            swing · Processed in {analysis.processing_time_sec}s · Compared to
-            Tiger Woods&apos; 2000 {analysis.swing_type}
+            swing · {viewLabel} · Processed in {analysis.processing_time_sec}s ·
+            Compared to Tiger Woods&apos; 2000 {analysis.swing_type}
           </p>
-        </div>
-
-        {/* View toggle */}
-        <div className="flex justify-center">
-          <ViewToggle activeView={activeView} onViewChange={setActiveView} />
         </div>
 
         {/* Side-by-side video comparison */}
