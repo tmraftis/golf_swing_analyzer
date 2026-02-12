@@ -52,6 +52,16 @@ GOLF_LANDMARKS = {
 }
 
 
+def _detect_video_suffix(video_bytes: bytes) -> str:
+    """Detect .mp4 or .mov from ISO base media file format magic bytes."""
+    if len(video_bytes) >= 12 and video_bytes[4:8] == b"ftyp":
+        brand = video_bytes[8:12]
+        if brand == b"qt  ":
+            return ".mov"
+        return ".mp4"
+    return ".mov"  # safe default for QuickTime
+
+
 @app.function(
     image=image,
     gpu="T4",
@@ -85,7 +95,8 @@ def extract_landmarks(
     import numpy as np
 
     # Write bytes to temp file (cv2.VideoCapture needs a file path)
-    with tempfile.NamedTemporaryFile(suffix=".mov", delete=False) as f:
+    suffix = _detect_video_suffix(video_bytes)
+    with tempfile.NamedTemporaryFile(suffix=suffix, delete=False) as f:
         f.write(video_bytes)
         tmp_path = f.name
 
@@ -124,11 +135,10 @@ def extract_landmarks(
 
         options = PoseLandmarkerOptions(
             base_options=BaseOptions(model_asset_path=MODEL_PATH),
-            running_mode=RunningMode.VIDEO,
+            running_mode=RunningMode.IMAGE,
             num_poses=1,
             min_pose_detection_confidence=0.5,
             min_pose_presence_confidence=0.5,
-            min_tracking_confidence=0.5,
         )
 
         all_landmarks = []
@@ -164,7 +174,7 @@ def extract_landmarks(
                         image_format=mp.ImageFormat.SRGB, data=rgb_frame
                     )
 
-                    results = landmarker.detect_for_video(mp_image, timestamp_ms)
+                    results = landmarker.detect(mp_image)
 
                     if results.pose_landmarks and len(results.pose_landmarks) > 0:
                         detected_count += 1

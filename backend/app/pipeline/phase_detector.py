@@ -46,11 +46,24 @@ def detect_swing_phases(landmarks_data: dict, view: str) -> dict:
     """
     logger.info(f"Detecting phases for {view} view...")
 
+    # Debug: log landmark data summary
+    total_frames = len(landmarks_data.get("frames", []))
+    detected_count = sum(1 for f in landmarks_data.get("frames", []) if f.get("detected"))
+    fps = landmarks_data.get("summary", {}).get("fps", 0)
+    logger.info(
+        f"{view}: {total_frames} total frames, {detected_count} detected, fps={fps}"
+    )
+
     try:
-        # Suppress print output from the script
+        # Capture print output from the script for debug logging
         stdout_capture = io.StringIO()
         with redirect_stdout(stdout_capture):
             phases = _detect_phases(landmarks_data, view=view)
+        # Log captured output for debugging
+        captured = stdout_capture.getvalue().strip()
+        if captured:
+            for line in captured.split("\n"):
+                logger.info(f"{view} detect_phases: {line.strip()}")
     except SystemExit:
         raise PhaseDetectionError(
             view,

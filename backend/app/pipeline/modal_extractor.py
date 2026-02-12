@@ -65,7 +65,43 @@ def extract_landmarks_parallel_modal(
     dtl_result = dtl_call.get()
     fo_result = fo_call.get()
 
-    # Check for extraction errors
+    # Check for extraction errors — retry failed videos once with lower threshold
+    dtl_failed = "error" in dtl_result
+    fo_failed = "error" in fo_result
+
+    if dtl_failed or fo_failed:
+        retry_rate = 0.5  # lower threshold for retry attempt
+
+        if dtl_failed:
+            logger.info(
+                f"DTL detection rate {dtl_result.get('detection_rate', 0)}% "
+                f"below threshold, retrying..."
+            )
+            dtl_call = extract_fn.spawn(
+                video_bytes=dtl_bytes,
+                frame_step=frame_step,
+                min_detection_rate=retry_rate,
+                target_height=target_height,
+            )
+
+        if fo_failed:
+            logger.info(
+                f"FO detection rate {fo_result.get('detection_rate', 0)}% "
+                f"below threshold, retrying..."
+            )
+            fo_call = extract_fn.spawn(
+                video_bytes=fo_bytes,
+                frame_step=frame_step,
+                min_detection_rate=retry_rate,
+                target_height=target_height,
+            )
+
+        if dtl_failed:
+            dtl_result = dtl_call.get()
+        if fo_failed:
+            fo_result = fo_call.get()
+
+    # Final error check after possible retry
     if "error" in dtl_result:
         raise LandmarkExtractionError("dtl", dtl_result.get("detection_rate", 0))
     if "error" in fo_result:

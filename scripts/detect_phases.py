@@ -676,6 +676,18 @@ def detect_phases(landmarks_data, view="dtl", params=None):
     y_smooth = smooth_signal(y_raw, effective_params["smoothing_window"])
     velocity = compute_velocity(y_smooth, effective_params["velocity_window"])
 
+    # Debug: velocity statistics to calibrate thresholds
+    valid_vel = velocity[velocity > 0]
+    if len(valid_vel) > 0:
+        print(f"  Velocity stats: min={np.min(valid_vel):.6f}, "
+              f"p25={np.percentile(valid_vel, 25):.6f}, "
+              f"median={np.median(valid_vel):.6f}, "
+              f"p75={np.percentile(valid_vel, 75):.6f}, "
+              f"max={np.max(valid_vel):.6f}")
+        still_count = np.sum(velocity < effective_params["still_threshold"])
+        print(f"  Frames below still_threshold ({effective_params['still_threshold']}): "
+              f"{still_count}/{len(velocity)} ({still_count/len(velocity)*100:.1f}%)")
+
     # Step 2: Rough address Y estimate (max Y where hands are low)
     # Use the global max of valid (non-NaN) smoothed Y values.
     # This is the position where hands are lowest (near ball level).
