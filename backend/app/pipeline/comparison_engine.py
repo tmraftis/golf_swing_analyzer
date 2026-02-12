@@ -25,6 +25,14 @@ ANGLE_WEIGHTS = {
 # Deltas below this floor are filtered out to prevent noise from surfacing.
 MIN_DELTA_DEGREES = 5
 
+# Angle/phase combinations to exclude from ranking.
+# These are unreliable due to 2D projection artifacts (e.g., atan2 line
+# angles at follow-through where the body is fully rotated away from camera).
+_EXCLUDE_FROM_RANKING = {
+    ("shoulder_line_angle", "follow_through"),
+    ("hip_line_angle", "follow_through"),
+}
+
 
 def compute_deltas(user_angles: dict, ref_angles: dict) -> dict:
     """Compute angle deltas: user - reference for each view/phase/angle.
@@ -87,6 +95,8 @@ def rank_differences(
         for phase, phase_deltas in view_deltas.items():
             for angle_name, delta in phase_deltas.items():
                 if abs(delta) < MIN_DELTA_DEGREES:
+                    continue
+                if (angle_name, phase) in _EXCLUDE_FROM_RANKING:
                     continue
 
                 weight = ANGLE_WEIGHTS.get((angle_name, phase), 1.0)

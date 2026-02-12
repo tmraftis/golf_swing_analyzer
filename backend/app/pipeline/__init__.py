@@ -189,6 +189,17 @@ def _extract_landmarks_modal(
             min_detection_rate=min_detection_rate,
             target_height=target_height,
         )
+
+        # Log extraction results for debugging
+        for label, lm in [("DTL", dtl_landmarks), ("FO", fo_landmarks)]:
+            total = len(lm.get("frames", []))
+            detected = sum(1 for f in lm.get("frames", []) if f.get("detected"))
+            fps = lm.get("summary", {}).get("fps", 0)
+            logger.info(
+                f"Modal {label}: {total} frames, {detected} detected "
+                f"({detected/total*100:.0f}%), fps={fps}"
+            )
+
         return dtl_landmarks, fo_landmarks
 
     except PipelineError:
