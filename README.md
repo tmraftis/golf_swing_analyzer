@@ -652,6 +652,7 @@ python scripts/build_reference_json.py
 
 ### Phase 4 remaining
 
+- **Angle calculation & feedback quality improvements** (see [Known Issues](#known-issues--angle-calculation-audit) below)
 - Drill content curation and expanded coaching tips
 - Onboarding flow and polish
 - QA and edge case handling
@@ -666,6 +667,80 @@ python scripts/build_reference_json.py
 | Landmark detection rate | >70% | Varies by video quality | Same |
 | Top differences returned | 3 | 3 | 3 |
 | System uptime (once deployed) | 99% | — | — |
+
+---
+
+## Known Issues — Angle Calculation Audit
+
+A thorough audit of the angle calculation pipeline found that the **core math is correct** (geometry functions, coordinate transforms, reference data generation) but several issues cause the **top 3 recommendations to feel off**. The system is internally consistent (same code computes user and reference angles), so relative comparisons are valid, but the feedback quality suffers from the problems below.
+
+### Issue 1: Face-On "Rotation" Angles Are Actually Line Tilts (HIGH)
+
+**Files:** `scripts/calculate_angles.py` — `calc_shoulder_turn_fo()`, `calc_hip_turn_fo()`
+
+`shoulder_line_angle` and `hip_line_angle` use `atan2(dy, dx)` to measure the **tilt** of the shoulder/hip line relative to horizontal in the 2D face-on image. This is fundamentally different from the **rotational turn** these names suggest. Tiger's reference X-factor at top is -2.2° (line tilt difference), whereas real golf instruction cites ~55° (3D rotational separation). The values are meaningless to any golfer who knows what "shoulder turn" or "X-factor" means.
+
+**Impact:** Coaching titles like "Incomplete Shoulder Turn" and "Shoulder-Hip Separation Off" fire based on line tilt deltas, not actual rotation. The tips ("feel your back face the target") describe rotation — but the measurement doesn't capture rotation from this view.
+
+**Fix options:**
+- Rename these angles to reflect what they actually measure (e.g., "Shoulder Line Tilt", "Hip Line Tilt", "Shoulder-Hip Tilt Separation")
+- Update fault rule titles and coaching descriptions to match the 2D measurement
+- Or: remove these from the top-3 ranking entirely and focus on angles that are well-captured in 2D (elbow flex, knee flex, spine angle, arm-torso separation)
+
+### Issue 2: Too Many Rules Fire on Any Delta > 8° (HIGH)
+
+**File:** `backend/app/pipeline/feedback_engine.py` — `_rule_matches()`, `FAULT_RULES`
+
+9 out of 16 fault rules have `min_delta=None, max_delta=None`, which means they trigger on **any** absolute delta > 8°. Face-on angles are inherently noisier (small body movements create large apparent angle changes in 2D projection), so an 8° threshold is too aggressive. Almost every swing will surface multiple face-on "faults" even if the golfer has great form.
+
+**Affected rules:** Incomplete Shoulder Turn, Hip Rotation Timing, Shoulder-Hip Separation, Reverse Spine Angle, Arm-Body Connection Lost, Lead Leg Position, and Spine Angle Change at Impact (DTL).
+
+**Fix options:**
+- Raise the default threshold to 12-15° for face-on rules
+- Add angle-specific thresholds instead of using `None/None` catch-all
+- Add a minimum absolute delta floor (e.g., 5°) in `rank_differences()` so trivial deltas never surface
+
+### Issue 3: No Minimum Delta Floor for Ranking (MEDIUM)
+
+**File:** `backend/app/pipeline/comparison_engine.py` — `rank_differences()`
+
+Even small, meaningless deltas (e.g., 9°) can become a "top 3" fault if they happen to be the largest weighted differences. There's no floor filter. A swing that closely matches Tiger could still get 3 "faults" that are essentially noise.
+
+**Fix:** Add a minimum threshold (e.g., `if abs(delta) < 5: continue`) in the ranking loop, or return fewer than 3 results when differences are minor.
+
+### Issue 4: Low-Visibility Landmarks Feed Into Rankings (MEDIUM)
+
+**File:** `scripts/calculate_angles.py`
+
+In the DTL reference data, left-side landmarks have visibility as low as 0.11 (left_elbow at address) and 0.11 (left_knee at address) due to body occlusion. Angles computed from these landmarks are unreliable. The only visibility check in the angle calculator is for `right_wrist_cock` (requires > 0.4). All other angles use landmarks regardless of visibility.
+
+Both user and reference are affected equally (so deltas are at least consistently noisy), but junk angles can still surface as top recommendations.
+
+**Fix:** Add a visibility threshold (e.g., 0.3) to all angle calculations. If any required landmark is below threshold, skip that angle for that phase. Propagate `None` values through the delta computation.
+
+### Issue 5: Camera Orientation Assumption (LOW)
+
+**File:** `scripts/calculate_angles.py` — `calc_spine_tilt()`
+
+The sign of `spine_tilt_fo` depends on which side of the golfer the face-on camera is positioned. MediaPipe's left/right labels refer to anatomical sides, so this is usually consistent, but there's no handling for left-handed golfers or unusual camera angles.
+
+**Fix for later:** Add left-handed golfer detection or a manual toggle.
+
+### Issue 6: atan2 Discontinuity Near 180° (LOW)
+
+**File:** `scripts/calculate_angles.py` — `calc_shoulder_turn_fo()`, `calc_hip_turn_fo()`
+
+The shoulder/hip line angles hover near 170-180°. If a user's line crosses the 180°/-180° boundary (unlikely during a normal swing), the delta would jump by ~360°. Theoretical edge case.
+
+**Fix for later:** Normalize angle differences to [-180, 180] range before computing deltas.
+
+### Recommended Fix Priority
+
+1. **Add minimum delta floor** in `rank_differences()` — quick win, prevents noise from surfacing
+2. **Raise face-on thresholds** — change `None/None` rules to require larger deltas (12-15°)
+3. **Add visibility filtering** to angle calculations — skip unreliable landmarks
+4. **Rename face-on rotation angles** — update titles/descriptions to match what's actually measured, or remove from top-3 ranking
+5. **Left-handed golfer support** — future enhancement
 
 ---
 
