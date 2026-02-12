@@ -524,7 +524,8 @@ python scripts/build_reference_json.py
 - **`useReducer` for upload form state** — manages the multi-step flow (upload → analyzing → redirect) without a global store
 - **HTTP range requests for video serving** — FastAPI's StaticFiles doesn't support range requests, which browsers need for video seeking; custom streaming endpoint returns `206 Partial Content` with proper `Content-Range` headers
 - **Velocity-based phase detection** — more robust than Y-position thresholds; anchors on peak downswing speed (the most reliable signal in any swing video) and works backwards/forwards from there
-- **Preceding-address validation** — each candidate top-of-backswing must have a still period (address) with hands low within 5 seconds before it; post-swing Y dips (walking away, lowering hands) have no preceding address and are rejected; uses a relaxed velocity threshold (3x `still_threshold`) to account for DTL tracking noise during the address position
+- **Preceding-address validation** — each candidate top-of-backswing must have a still period (address) with hands low within 5 seconds before it; post-swing Y dips (walking away, lowering hands) have no preceding address and are rejected; uses a relaxed velocity threshold (3x `still_threshold`) and requires at least 0.5s of stillness to prevent brief waggle pauses from passing as address
+- **Adaptive still_threshold** — auto-calibrated per video using `max(base_threshold, p25_velocity × 3.5)` to handle IMAGE mode's noisier signal; DTL (more tracking noise) gets a higher threshold (~0.002) while FO (cleaner signal) stays near the base (0.001)
 - **Visibility-weighted signal filtering** — MediaPipe landmark visibility below 0.4 treated as NaN to prevent tracking artifacts from corrupting phase detection, especially at video boundaries and during fast motion
 - **Wraparound-aware angle deltas** — shoulder/hip line angles computed via atan2 wrap at ±180°; comparison engine uses shortest angular distance `(d + 180) % 360 - 180` to avoid nonsensical 346° deltas when the actual difference is ~14°
 - **Video readiness tracking in React** — `loadeddata` event listeners ensure video seeking works even when metadata hasn't loaded yet; pending seeks are queued and executed once the video is ready
@@ -731,28 +732,29 @@ The sign of `spine_tilt_fo` depends on which side of the golfer the face-on came
 
 The comparison engine now uses wraparound-aware angular difference `(d + 180) % 360 - 180` for `shoulder_line_angle` and `hip_line_angle`. The X-factor calculation (`shoulder_angle - hip_angle`) also uses this normalization. A user value of -169° vs Tiger's 177° now correctly computes as a 14° difference instead of 346°.
 
-### Issue 7: IMAGE Mode Produces Noisier Velocity Signal (IN PROGRESS)
+### ~~Issue 7: IMAGE Mode Produces Noisier Velocity Signal~~ (FIXED)
 
 **Files:** `modal_app/landmark_worker.py`, `scripts/detect_phases.py`
 
 Modal was switched from `RunningMode.VIDEO` to `RunningMode.IMAGE` to fix non-deterministic extraction (VIDEO mode's temporal tracking state caused the same video to produce wildly different detection rates between runs — GitHub issue #5253). IMAGE mode processes each frame independently, giving deterministic results and eliminating cascade tracking failures.
 
-However, IMAGE mode produces noisier frame-to-frame landmark positions (no temporal smoothing). This increases the velocity signal computed by `detect_phases.py`, which may cause the `still_threshold` (0.001) to be too strict — the address still period may not be recognized because velocity never drops below the threshold. This breaks the `_has_preceding_address()` validation, causing the algorithm to reject the real backswing and fall through to a bad fallback.
+IMAGE mode produces noisier frame-to-frame landmark positions (no temporal smoothing), which increased the velocity signal and broke the fixed `still_threshold`. Fixed with three changes:
 
-**Status:** Extraction reliability is fixed (consistent frame counts/detection rates). Phase detection threshold calibration for IMAGE mode noise is in progress. Debug logging is in place to capture velocity statistics for threshold tuning.
-
-**Likely fix:** Increase `still_threshold` or increase the smoothing window to absorb IMAGE mode noise. The existing 3x relaxed threshold in `_has_preceding_address()` may need to be further relaxed, or the base `still_threshold` raised from 0.001 to ~0.003-0.005.
+1. **Adaptive still_threshold** — auto-calibrated per video using `max(base_threshold, p25_velocity * 3.5)`. DTL (noisier) gets ~0.002, FO (cleaner) stays at base 0.001.
+2. **Time-based minimum stillness in `_has_preceding_address()`** — increased from 3 frames to `max(3, fps * 0.5)` (0.5s), preventing brief waggle pauses from passing as address.
+3. **Follow-through uses Y-minimum first** — local minimum of Y (hands at highest point) is more robust than velocity-settle with IMAGE mode noise. Velocity-settle is now fallback only.
+4. **Impact refinement** — after velocity settle finds a candidate, looks in a 5-frame window for the frame closest to address Y level (the actual ball-strike).
 
 ### Recommended Fix Priority
 
-1. **Calibrate phase detection thresholds for IMAGE mode** — `still_threshold` needs tuning for noisier IMAGE mode signal (Issue 7)
-2. ~~**Add minimum delta floor** in `rank_differences()`~~ — Done (MIN_DELTA_DEGREES = 5)
-3. **Raise face-on thresholds** — change `None/None` rules to require larger deltas (12-15°)
-4. **Add visibility filtering** to angle calculations — skip unreliable landmarks
-5. **Rename face-on rotation angles** — update titles/descriptions to match what's actually measured, or remove from top-3 ranking
-6. **Left-handed golfer support** — future enhancement
-7. ~~**Fix atan2 wraparound**~~ — Done (wraparound-aware deltas in comparison engine + X-factor calculation)
-8. ~~**Fix Modal non-determinism**~~ — Done (switched to `RunningMode.IMAGE`, added retry logic, fixed file extension detection)
+1. ~~**Add minimum delta floor** in `rank_differences()`~~ — Done (MIN_DELTA_DEGREES = 5)
+2. **Raise face-on thresholds** — change `None/None` rules to require larger deltas (12-15°)
+3. **Add visibility filtering** to angle calculations — skip unreliable landmarks
+4. **Rename face-on rotation angles** — update titles/descriptions to match what's actually measured, or remove from top-3 ranking
+5. **Left-handed golfer support** — future enhancement
+6. ~~**Fix atan2 wraparound**~~ — Done (wraparound-aware deltas in comparison engine + X-factor calculation)
+7. ~~**Fix Modal non-determinism**~~ — Done (switched to `RunningMode.IMAGE`, added retry logic, fixed file extension detection)
+8. ~~**Calibrate phase detection for IMAGE mode**~~ — Done (adaptive threshold, time-based stillness, Y-minimum follow-through, impact refinement)
 
 ---
 

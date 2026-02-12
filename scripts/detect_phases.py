@@ -29,7 +29,7 @@ import numpy as np
 DEFAULT_PARAMS = {
     "smoothing_window": 5,              # frames for rolling average smoothing
     "velocity_window": 10,              # frames for rolling velocity computation
-    "still_threshold": 0.001,           # max rolling velocity to consider "still"
+    "still_threshold": 0.001,           # max rolling velocity to consider "still" (base; auto-calibrated per video)
     "min_still_duration": 5,            # minimum consecutive still frames for address
     "top_prominence_threshold": 0.05,   # min Y drop from address level to qualify as "top"
     "impact_search_window_sec": 2.0,    # seconds after top to search for impact
@@ -159,7 +159,7 @@ def _has_preceding_address(local_min_idx, velocity, y_smooth, rough_address_y, f
     Returns True if a qualifying still period is found before local_min_idx.
     """
     still_thresh = params["still_threshold"] * 3  # relaxed threshold for address detection
-    min_still = 3  # shorter than address detection (which uses min_still_duration=5)
+    min_still = max(3, int(fps * 0.5))  # at least 0.5s of stillness (address is 1-3s)
     search_start = max(0, local_min_idx - int(fps * 5))
 
     # Search for any still run in the window before this candidate
@@ -489,7 +489,19 @@ def find_impact(y_smooth, velocity, top_frame, address_y, fps, params):
             settle_threshold = peak_vel * 0.15  # velocity drops to 15% of peak
             for i in range(peak_idx + 1, len(dir_vel_smooth)):
                 if dir_vel_smooth[i] < settle_threshold:
-                    impact_frame = top_frame + i
+                    # Refine: the velocity settle point can be slightly
+                    # early. Look in a small window after it for the frame
+                    # closest to address Y level (the actual ball-strike).
+                    settle_idx = i
+                    refine_end = min(settle_idx + 5, len(search_region))
+                    refine_region = search_region[settle_idx:refine_end]
+                    if len(refine_region) > 0:
+                        best_offset = int(np.argmin(
+                            np.abs(refine_region - address_y)
+                        ))
+                        impact_frame = top_frame + settle_idx + best_offset
+                    else:
+                        impact_frame = top_frame + settle_idx
                     diag = {
                         "search_range": (top_frame, search_end),
                         "impact_frame": impact_frame,
@@ -576,10 +588,25 @@ def find_follow_through(y_smooth, velocity, impact_frame, top_frame, fps, params
 
     diag = {"search_range": (search_start, search_end)}
 
-    # Strategy 1: Find where velocity settles to near-zero after impact
-    # The follow-through is where the golfer reaches the stable finish position.
-    # Find the first long still run and pick its midpoint — the golfer
-    # holds the finish, so the middle of the settled period is most natural.
+    # Strategy 1: Find local minimum of Y in search region.
+    # The follow-through finish has hands at their highest point (lowest Y).
+    # This is more robust than velocity-settle with IMAGE mode noise,
+    # where frame-to-frame jitter prevents clean velocity settling.
+    minima = []
+    for i in range(2, len(search_region) - 2):
+        if (search_region[i] <= search_region[i - 1] and
+                search_region[i] <= search_region[i + 1]):
+            minima.append(i)
+
+    if minima:
+        # Use the first local minimum (earliest finish position)
+        best = minima[0]
+        ft_frame = search_start + best
+        diag["chosen"] = ft_frame
+        diag["method"] = "local_minimum"
+        return ft_frame, diag
+
+    # Strategy 2: Find where velocity settles to near-zero after impact.
     still_thresh = params["still_threshold"]
     min_still = 3  # need at least 3 consecutive still frames
     settle_start = None
@@ -590,7 +617,6 @@ def find_follow_through(y_smooth, velocity, impact_frame, top_frame, fps, params
                 settle_start = i
         else:
             if settle_start is not None and (i - settle_start) >= min_still:
-                # Found a qualifying still run — use its midpoint
                 mid = settle_start + (i - settle_start) // 2
                 ft_frame = search_start + mid
                 diag["chosen"] = ft_frame
@@ -599,29 +625,12 @@ def find_follow_through(y_smooth, velocity, impact_frame, top_frame, fps, params
                 return ft_frame, diag
             settle_start = None
 
-    # Check if the still run extends to end of search window
     if settle_start is not None and (len(vel_region) - settle_start) >= min_still:
         mid = settle_start + (len(vel_region) - settle_start) // 2
         ft_frame = search_start + mid
         diag["chosen"] = ft_frame
         diag["method"] = "velocity_settle"
         diag["settle_run"] = (search_start + settle_start, search_start + len(vel_region) - 1)
-        return ft_frame, diag
-
-    # Strategy 2: Find local minimum of Y in search region
-    # (hands at highest point in finish position)
-    minima = []
-    for i in range(2, len(search_region) - 2):
-        if (search_region[i] <= search_region[i - 1] and
-                search_region[i] <= search_region[i + 1]):
-            minima.append(i)
-
-    if minima:
-        # Use the first local minimum (earliest stable finish)
-        best = minima[0]
-        ft_frame = search_start + best
-        diag["chosen"] = ft_frame
-        diag["method"] = "local_minimum"
         return ft_frame, diag
 
     # Last resort: global minimum in the search window
@@ -676,17 +685,24 @@ def detect_phases(landmarks_data, view="dtl", params=None):
     y_smooth = smooth_signal(y_raw, effective_params["smoothing_window"])
     velocity = compute_velocity(y_smooth, effective_params["velocity_window"])
 
-    # Debug: velocity statistics to calibrate thresholds
+    # Auto-calibrate still_threshold based on velocity distribution.
+    # IMAGE mode (per-frame detection) produces noisier Y positions than
+    # VIDEO mode (temporal tracking), so a fixed threshold doesn't work
+    # across both views and extraction modes. Instead, set the threshold
+    # to capture the quietest ~40-50% of frames as "still" candidates.
+    # Use p25 * 3.5 as the adaptive threshold, floored at the configured
+    # base still_threshold to avoid being too permissive on clean signals.
     valid_vel = velocity[velocity > 0]
+    base_thresh = effective_params["still_threshold"]
     if len(valid_vel) > 0:
-        print(f"  Velocity stats: min={np.min(valid_vel):.6f}, "
-              f"p25={np.percentile(valid_vel, 25):.6f}, "
-              f"median={np.median(valid_vel):.6f}, "
-              f"p75={np.percentile(valid_vel, 75):.6f}, "
-              f"max={np.max(valid_vel):.6f}")
-        still_count = np.sum(velocity < effective_params["still_threshold"])
-        print(f"  Frames below still_threshold ({effective_params['still_threshold']}): "
-              f"{still_count}/{len(velocity)} ({still_count/len(velocity)*100:.1f}%)")
+        p25 = float(np.percentile(valid_vel, 25))
+        adaptive_thresh = max(base_thresh, p25 * 3.5)
+        effective_params["still_threshold"] = adaptive_thresh
+        still_count = int(np.sum(velocity < adaptive_thresh))
+        print(f"  Velocity p25={p25:.6f}, adaptive still_threshold={adaptive_thresh:.6f} "
+              f"(base={base_thresh})")
+        print(f"  Frames below threshold: {still_count}/{len(velocity)} "
+              f"({still_count/len(velocity)*100:.1f}%)")
 
     # Step 2: Rough address Y estimate (max Y where hands are low)
     # Use the global max of valid (non-NaN) smoothed Y values.
