@@ -52,6 +52,8 @@ export default function ResultsDashboard({ analysis }: ResultsDashboardProps) {
             userPhaseLandmarks={analysis.user_phase_landmarks}
             referencePhaseLandmarks={analysis.reference_phase_landmarks}
             userAllLandmarks={analysis.user_all_landmarks}
+            userPhaseImages={analysis.user_phase_images}
+            referencePhaseImages={analysis.reference_phase_images}
           />
         )}
 

@@ -8,6 +8,7 @@ import type {
   SwingPhase,
   PhaseLandmarkData,
   AllLandmarkData,
+  PhaseImageData,
 } from "@/types";
 import { SWING_PHASES, PHASE_LABELS } from "@/types";
 import { getVideoUrl } from "@/lib/api";
@@ -27,6 +28,8 @@ interface VideoComparisonProps {
   userPhaseLandmarks?: PhaseLandmarkData;
   referencePhaseLandmarks?: PhaseLandmarkData;
   userAllLandmarks?: AllLandmarkData;
+  userPhaseImages?: PhaseImageData;
+  referencePhaseImages?: PhaseImageData;
 }
 
 export default function VideoComparison({
@@ -40,6 +43,8 @@ export default function VideoComparison({
   userPhaseLandmarks,
   referencePhaseLandmarks,
   userAllLandmarks,
+  userPhaseImages,
+  referencePhaseImages,
 }: VideoComparisonProps) {
   // Refs for all 4 videos: user-dtl, user-fo, ref-dtl, ref-fo
   const userVideoRefs = useRef<Record<ViewKey, HTMLVideoElement | null>>({
@@ -63,6 +68,27 @@ export default function VideoComparison({
   const hasLandmarkData = !!(userPhaseLandmarks || referencePhaseLandmarks);
   // Frame-by-frame landmarks for the active view (user video only)
   const userFrameLandmarks = userAllLandmarks?.[activeView];
+  // Phase frame images for instant switching
+  const userPhaseImage = userPhaseImages?.[activeView]?.[activePhase];
+  const refPhaseImage = referencePhaseImages?.[activeView]?.[activePhase];
+
+  // Preload all phase images on mount for instant view/phase switching
+  useEffect(() => {
+    const sources = [userPhaseImages, referencePhaseImages];
+    for (const imageData of sources) {
+      if (!imageData) continue;
+      for (const view of VIEWS) {
+        const viewImages = imageData[view];
+        if (!viewImages) continue;
+        for (const url of Object.values(viewImages)) {
+          if (url) {
+            const img = new Image();
+            img.src = getVideoUrl(url);
+          }
+        }
+      }
+    }
+  }, [userPhaseImages, referencePhaseImages]);
 
   // Helper to get the active video elements
   const getActiveUserVideo = useCallback(
@@ -219,6 +245,15 @@ export default function VideoComparison({
                 onEnded={handleEnded}
               />
             ))}
+            {/* Phase frame image: instant display when paused, hidden during playback */}
+            {userPhaseImage && !isPlaying && (
+              <img
+                src={getVideoUrl(userPhaseImage)}
+                alt=""
+                className="absolute inset-0 w-full h-full object-contain"
+                style={{ zIndex: 5 }}
+              />
+            )}
             <SkeletonOverlay
               videoRef={userVideoRefs.current[activeView as ViewKey]}
               landmarks={userLandmarks}
@@ -249,6 +284,15 @@ export default function VideoComparison({
                 onEnded={handleEnded}
               />
             ))}
+            {/* Phase frame image: instant display when paused, hidden during playback */}
+            {refPhaseImage && !isPlaying && (
+              <img
+                src={getVideoUrl(refPhaseImage)}
+                alt=""
+                className="absolute inset-0 w-full h-full object-contain"
+                style={{ zIndex: 5 }}
+              />
+            )}
             <SkeletonOverlay
               videoRef={refVideoRefs.current[activeView as ViewKey]}
               landmarks={refLandmarks}

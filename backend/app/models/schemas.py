@@ -51,3 +51,5 @@ class AnalysisResponse(BaseModel):
     user_phase_landmarks: dict | None = None
     reference_phase_landmarks: dict | None = None
     user_all_landmarks: dict | None = None
+    user_phase_images: dict | None = None
+    reference_phase_images: dict | None = None

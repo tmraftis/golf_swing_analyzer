@@ -37,8 +37,10 @@ export default function SwingTypeSelector({
 
       {/* Driver — coming soon */}
       <div className="relative rounded-xl border-2 border-cream/10 p-6 text-left opacity-50 cursor-not-allowed">
-        <div className="absolute top-4 right-4 bg-pastel-yellow text-blue-charcoal text-xs font-bold px-2.5 py-1 rounded-full">
-          Coming Soon
+        <div className="absolute top-4 right-4">
+          <span className="bg-pastel-yellow text-blue-charcoal text-[10px] font-bold px-2 py-0.5 rounded-full whitespace-nowrap">
+            Soon
+          </span>
         </div>
         <h3 className="text-lg font-semibold mb-1">Driver</h3>
         <p className="text-sm text-cream/50">

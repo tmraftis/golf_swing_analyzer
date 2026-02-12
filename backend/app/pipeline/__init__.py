@@ -9,6 +9,8 @@ import logging
 import os
 import time
 
+import cv2
+
 from .models import PipelineError, VideoNotFoundError
 from .landmark_extractor import extract_landmarks_from_video, GOLF_LANDMARKS
 from .phase_detector import detect_swing_phases
@@ -70,6 +72,78 @@ def _extract_all_frame_landmarks(landmarks_data: dict) -> list:
                 "lm": frame_lm,
             })
     return frames
+
+
+def _extract_phase_frame_images(
+    video_path: str,
+    phases: dict,
+    upload_dir: str,
+    upload_id: str,
+    view: str,
+) -> dict:
+    """Extract JPEG images at each phase frame for instant phase switching.
+
+    Saves images as {upload_id}_{view}_{phase}.jpg in the upload directory.
+    Returns dict keyed by phase name with the URL path for each image.
+    """
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        logger.warning(f"Cannot open video for frame extraction: {video_path}")
+        return {}
+
+    result = {}
+    for phase_name, phase_info in phases.items():
+        frame_num = phase_info["frame"]
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_num)
+        ret, frame = cap.read()
+        if not ret:
+            logger.warning(f"Cannot read frame {frame_num} from {video_path}")
+            continue
+
+        filename = f"{upload_id}_{view}_{phase_name}.jpg"
+        output_path = os.path.join(upload_dir, filename)
+        cv2.imwrite(output_path, frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        result[phase_name] = f"/uploads/{filename}"
+
+    cap.release()
+    return result
+
+
+def _extract_ref_phase_frame_images(
+    video_path: str,
+    ref_data: dict,
+    upload_dir: str,
+    upload_id: str,
+    view: str,
+) -> dict:
+    """Extract JPEG images from reference video at each phase timestamp.
+
+    Reference data has timestamp_sec per phase; we seek by time.
+    Saves images as {upload_id}_ref_{view}_{phase}.jpg in the upload directory.
+    Returns dict keyed by phase name with the URL path for each image.
+    """
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        logger.warning(f"Cannot open reference video for frame extraction: {video_path}")
+        return {}
+
+    fps = cap.get(cv2.CAP_PROP_FPS)
+    result = {}
+    for phase_name, phase_info in ref_data.items():
+        frame_num = phase_info.get("frame", 0)
+        cap.set(cv2.CAP_PROP_POS_FRAMES, frame_num)
+        ret, frame = cap.read()
+        if not ret:
+            logger.warning(f"Cannot read frame {frame_num} from {video_path}")
+            continue
+
+        filename = f"{upload_id}_ref_{view}_{phase_name}.jpg"
+        output_path = os.path.join(upload_dir, filename)
+        cv2.imwrite(output_path, frame, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        result[phase_name] = f"/uploads/{filename}"
+
+    cap.release()
+    return result
 
 
 def _find_video(upload_dir: str, upload_id: str, view: str) -> str:
@@ -232,6 +306,30 @@ def run_analysis(
         "fo": _extract_all_frame_landmarks(fo_landmarks),
     }
 
+    # Step 4d: Extract phase frame JPEG images for instant phase switching
+    logger.info("Extracting phase frame images...")
+    user_phase_images = {
+        "dtl": _extract_phase_frame_images(
+            dtl_path, dtl_phases, upload_dir, upload_id, "dtl"
+        ),
+        "fo": _extract_phase_frame_images(
+            fo_path, fo_phases, upload_dir, upload_id, "fo"
+        ),
+    }
+
+    # Reference video phase frame images (Tiger)
+    from .reference_data import PROJECT_ROOT
+    ref_dtl_video = str(PROJECT_ROOT / "reference_data" / swing_type / f"tiger_2000_{swing_type}_dtl.mov")
+    ref_fo_video = str(PROJECT_ROOT / "reference_data" / swing_type / f"tiger_2000_{swing_type}_fo.mov")
+    ref_phase_images = {
+        "dtl": _extract_ref_phase_frame_images(
+            ref_dtl_video, dtl_ref, upload_dir, upload_id, "dtl"
+        ),
+        "fo": _extract_ref_phase_frame_images(
+            ref_fo_video, fo_ref, upload_dir, upload_id, "fo"
+        ),
+    }
+
     processing_time = round(time.time() - start_time, 1)
     logger.info(f"Analysis complete in {processing_time}s")
 
@@ -268,4 +366,6 @@ def run_analysis(
         "user_phase_landmarks": user_phase_landmarks,
         "reference_phase_landmarks": reference_phase_landmarks,
         "user_all_landmarks": user_all_landmarks,
+        "user_phase_images": user_phase_images,
+        "reference_phase_images": ref_phase_images,
     }

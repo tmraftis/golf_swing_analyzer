@@ -89,6 +89,14 @@ export interface AllLandmarkData {
   fo: FrameLandmark[];
 }
 
+// Phase frame images for instant switching (JPEG URLs keyed by phase)
+export type ViewPhaseImages = Partial<Record<SwingPhase, string>>;
+
+export interface PhaseImageData {
+  dtl: ViewPhaseImages;
+  fo: ViewPhaseImages;
+}
+
 // --- Analysis types ---
 
 export interface PhaseAngles {
@@ -148,4 +156,6 @@ export interface AnalysisResponse {
   user_phase_landmarks?: PhaseLandmarkData;
   reference_phase_landmarks?: PhaseLandmarkData;
   user_all_landmarks?: AllLandmarkData;
+  user_phase_images?: PhaseImageData;
+  reference_phase_images?: PhaseImageData;
 }

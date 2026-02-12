@@ -4,7 +4,7 @@
 
 Compare your golf swing to Tiger Woods' iconic 2000 iron swing using computer vision. Upload down-the-line (DTL) and face-on (FO) videos, and get back angle comparisons, top 3 faults, and drill recommendations — all in under 20 seconds with GPU acceleration.
 
-**Current status:** Phase 3.5 complete + production deployment live. Upload videos, get AI-powered swing analysis with side-by-side video comparison against Tiger Woods, phase-by-phase navigation, angle comparison tables, and coaching feedback. GPU-accelerated landmark extraction via Modal runs both videos in parallel on T4 GPUs. Server-side video compression (ffmpeg H.264 ~4Mbps) reduces storage by ~73% and speeds up video streaming. Authentication via PropelAuth with Google OAuth and Magic Link sign-in — live in both local dev and production (`swingpure.ai`). V1 is iron-only; driver support is planned for a future release.
+**Current status:** Phase 4 in progress. Upload videos, get AI-powered swing analysis with side-by-side video comparison against Tiger Woods, phase-by-phase navigation, angle comparison tables, and coaching feedback. Toggleable skeleton overlay tracks your body in real-time during video playback (frame-by-frame on user video, phase-only on Tiger). Phase frame images extracted server-side as JPEGs for instant phase/view switching with zero seek latency. GPU-accelerated landmark extraction via Modal runs both videos in parallel on T4 GPUs. Server-side video compression (ffmpeg H.264 ~4Mbps) reduces storage by ~73% and speeds up video streaming. Authentication via PropelAuth with Google OAuth and Magic Link sign-in — live in both local dev and production (`swingpure.ai`). V1 is iron-only; driver support is planned for a future release.
 
 ---
 
@@ -27,7 +27,7 @@ POST /api/upload  →  Save files, compress (ffmpeg), return upload_id
     ▼
 POST /api/analyze/{upload_id}
     │
-    ├─ Extract landmarks (DTL + FO)     ~5-8s (Modal GPU, parallel)
+    ├─ Extract landmarks (DTL + FO)     ~5-8s (Modal GPU, warm start)
     │                                    ~15-25s each (local CPU, sequential)
     ├─ Detect swing phases               ~1s
     ├─ Calculate angles                   ~0.5s
@@ -38,7 +38,9 @@ POST /api/analyze/{upload_id}
     ▼
 Response: user_angles, reference_angles, deltas,
           top 3 differences with coaching tips,
-          video_urls, reference_video_urls
+          video_urls, reference_video_urls,
+          user_all_landmarks (frame-by-frame),
+          phase_images (JPEG snapshots)
     │
     ▼
 /results/{upload_id}  →  Side-by-side video comparison,
@@ -90,7 +92,7 @@ golf_swing_analyzer/
 │   │   │       ├── PhaseTimeline.tsx      # Horizontal 4-phase navigator
 │   │   │       ├── ViewToggle.tsx         # DTL/FO segmented control
 │   │   │       ├── AngleComparisonTable.tsx # Angle comparison table (collapsible)
-│   │   │       ├── SkeletonOverlay.tsx    # Canvas overlay: pose skeleton on video
+│   │   │       ├── SkeletonOverlay.tsx    # Canvas overlay: frame-by-frame skeleton on video
 │   │   │       ├── DifferenceCard.tsx     # Coaching feedback card
 │   │   │       ├── LoadingSkeleton.tsx    # Loading placeholder
 │   │   │       └── ErrorState.tsx         # Error display
@@ -99,7 +101,7 @@ golf_swing_analyzer/
 │   │   │   ├── validation.ts              # File type, size, duration checks
 │   │   │   └── constants.ts               # Brand values, limits, accepted types
 │   │   └── types/
-│   │       └── index.ts                   # TypeScript interfaces (angles, phases, videos, landmarks)
+│   │       └── index.ts                   # TypeScript interfaces (angles, phases, videos, landmarks, frame data)
 │   ├── public/
 │   │   └── pure-logo.jpeg                 # Logo for frontend
 │   ├── .env.local                         # API URL + PropelAuth credentials
@@ -194,7 +196,7 @@ modal token set --token-id <your-id> --token-secret <your-secret>
 modal deploy modal_app/landmark_worker.py
 ```
 
-Then set `USE_MODAL=true` in `backend/.env`. Without Modal, landmark extraction runs locally on CPU (~50s). With Modal, both videos are processed in parallel on T4 GPUs (~10-15s).
+Then set `USE_MODAL=true` in `backend/.env`. Without Modal, landmark extraction runs locally on CPU (~50s). With Modal, both videos are processed in parallel on T4 GPUs (~5-8s). Cold starts add ~18-35s on the first request after idle; optionally add `min_containers=1` to the `@app.function()` decorator to keep a warm instance ready.
 
 ### 2.5. Set up PropelAuth
 
@@ -396,7 +398,7 @@ The pipeline runs as a sequence of steps, each with error handling and logging:
 
 | Step | Module | What it does | Time (Modal) | Time (local) |
 |------|--------|-------------|:---:|:---:|
-| 1 | `modal_extractor.py` / `landmark_extractor.py` | MediaPipe pose extraction (parallel on GPU or sequential on CPU) | ~5-8s total | ~15-25s × 2 |
+| 1 | `modal_extractor.py` / `landmark_extractor.py` | MediaPipe pose extraction (parallel on GPU or sequential on CPU) | ~5-8s total (warm) | ~15-25s × 2 |
 | 2 | `phase_detector.py` | Auto-detect address, top, impact, follow-through | ~0.5s | ~0.5s |
 | 3 | `angle_calculator.py` | Compute golf-specific angles at each phase | ~0.5s | ~0.5s |
 | 4 | `reference_data.py` | Load Tiger Woods reference (cached with `lru_cache`) | instant | instant |
@@ -529,7 +531,8 @@ python scripts/build_reference_json.py
 - **Video downscaling for inference** — frames downscaled to 960px height before MediaPipe inference on Modal; normalized landmark coordinates remain resolution-independent, with pixel positions mapped back to original dimensions
 - **Lazy Modal import** — `modal` package only imported when `USE_MODAL=true`, so the backend works without Modal installed when running locally
 - **Server-side video compression** — uploaded videos (typically iPhone HEVC .MOV, ~15Mbps, ~35MB each) are compressed to H.264 1080p ~4Mbps via ffmpeg after upload, reducing storage by ~73% (~35MB → ~8MB per file). Orientation-aware scale filter preserves portrait (1080×1920) and landscape (1920×1080) dimensions. `+faststart` moves moov atom for HTTP streaming. Graceful fallback: skips compression if ffmpeg is missing or compression fails. Controllable via `COMPRESS_UPLOADS=false` env var
-- **Skeleton overlay via canvas** — toggleable pose skeleton drawn on an HTML5 `<canvas>` absolutely positioned over each video using `pointer-events-none`. Landmarks (normalized 0-1 coords) are mapped to pixel positions accounting for `object-contain` letterboxing/pillarboxing via `getVideoRenderRect()`. `ResizeObserver` redraws on container resize. Overlay only renders at the 4 phase frames (not during live playback) to avoid needing per-frame landmark data transfer. Backend includes phase landmarks (~3-4KB) in the existing `AnalysisResponse` — no extra API call needed
+- **Skeleton overlay via canvas** — toggleable pose skeleton drawn on an HTML5 `<canvas>` absolutely positioned over each video using `pointer-events-none`. Landmarks (normalized 0-1 coords) are mapped to pixel positions accounting for `object-contain` letterboxing/pillarboxing via `getVideoRenderRect()`. `ResizeObserver` redraws on container resize. User video has frame-by-frame skeleton tracking during playback via `requestAnimationFrame` loop with binary search for nearest landmark frame by timestamp (~60fps). Tiger video shows skeleton at phase frames only (reference data has 4 phase landmarks, not per-frame). Backend includes both phase landmarks and all-frame landmarks in the `AnalysisResponse` — compact keys (`t`, `lm`) keep payload to ~10-20KB
+- **Phase frame image extraction** — server-side JPEG snapshots extracted at each of the 4 phase frames (address, top, impact, follow-through) for both user and reference videos using cv2. Images are preloaded on the frontend via `new Image()` and displayed as `<img>` overlays when paused, eliminating the 50-300ms video seeking latency when switching phases or views. 16 images total (4 phases × 2 views × 2 videos), ~85% JPEG quality
 
 ---
 
@@ -628,13 +631,24 @@ python scripts/build_reference_json.py
 ### Phase 4 deliverables (in progress)
 
 - **Skeleton overlay on video player:**
-  - Toggleable pose skeleton drawn on both user and Tiger videos at each phase frame
+  - Toggleable pose skeleton drawn on both user and Tiger videos
   - 12 golf-relevant joints (shoulders, elbows, wrists, hips, knees, ankles) connected by skeleton lines
   - Canvas overlay with `object-contain` coordinate mapping for portrait and landscape videos
   - Forest Green lines, Cream joint dots matching design system
-  - Toggle button next to play/pause; overlay auto-hides during playback
-  - Backend includes phase landmarks (normalized x,y coords) in API response for both user and reference
+  - Toggle button next to play/pause controls
+  - **Frame-by-frame tracking on user video:** skeleton follows the body in real-time during playback via `requestAnimationFrame` loop with binary search for nearest landmark frame (~60fps). Backend sends all detected frame landmarks (compact `{t, lm}` format, ~10-20KB)
+  - **Phase-only on Tiger video:** skeleton shows at 4 phase frames when paused (reference data doesn't have per-frame landmarks)
+  - Backend includes phase landmarks and all-frame landmarks in API response
   - Graceful degradation: toggle hidden if landmark data unavailable (old cached results)
+- **Instant phase switching via server-side frame extraction:**
+  - JPEG snapshots extracted at each phase frame for both user and Tiger videos (cv2)
+  - 16 images total (4 phases × 2 views × 2 videos) at 85% JPEG quality
+  - Frontend preloads all images on mount via `new Image()` for browser cache population
+  - `<img>` overlay shown when paused (zIndex 5), hidden during playback — eliminates 50-300ms video seek latency
+- **Branding and UX polish:**
+  - Custom favicon: white golfer silhouette on transparent background (multi-size ICO: 16, 32, 48px)
+  - Tab title: "Swing Pure"
+  - Driver card "Soon" badge positioned consistently with Iron checkmark, mobile-friendly
 
 ### Phase 4 remaining
 
@@ -646,7 +660,7 @@ python scripts/build_reference_json.py
 
 ## Performance Targets
 
-| Metric | Target | Local CPU | Modal GPU |
+| Metric | Target | Local CPU | Modal GPU (warm) |
 |--------|--------|:---------:|:---------:|
 | End-to-end processing time | <60s | ~50s | ~10-15s |
 | Landmark detection rate | >70% | Varies by video quality | Same |

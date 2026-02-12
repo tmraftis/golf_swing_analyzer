@@ -11,7 +11,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Pure — Swing Pure",
+  title: "Swing Pure",
   description:
     "Compare your golf swing to Tiger Woods' iconic 2000 form. Get your top 3 faults and drills to improve.",
 };
