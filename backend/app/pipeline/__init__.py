@@ -16,7 +16,7 @@ from .landmark_extractor import extract_landmarks_from_video, GOLF_LANDMARKS
 from .phase_detector import detect_swing_phases
 from .angle_calculator import calculate_angles
 from .reference_data import load_reference
-from .comparison_engine import compute_deltas, rank_differences
+from .comparison_engine import compute_deltas, rank_differences, compute_similarity_score
 from .feedback_engine import generate_feedback
 
 logger = logging.getLogger(__name__)
@@ -351,6 +351,10 @@ def run_analysis(
     # Step 6: Compute deltas
     deltas = compute_deltas(user_angles, ref_angles)
 
+    # Step 6b: Compute overall similarity score
+    similarity_score = compute_similarity_score(deltas)
+    logger.info(f"Similarity score: {similarity_score}%")
+
     # Step 7: Rank differences and generate feedback
     ranked = rank_differences(deltas, user_angles, ref_angles)
     top_differences = generate_feedback(ranked, user_angles, ref_angles)
@@ -417,6 +421,7 @@ def run_analysis(
         "upload_id": upload_id,
         "swing_type": swing_type,
         "processing_time_sec": processing_time,
+        "similarity_score": similarity_score,
         "user_angles": user_angles,
         "reference_angles": ref_angles,
         "deltas": deltas,

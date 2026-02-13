@@ -11,8 +11,8 @@ export default function HeroSection() {
       <div className="absolute inset-0 bg-gradient-to-b from-blue-charcoal via-blue-charcoal to-blue-charcoal/95" />
       <div className="relative z-10 text-center max-w-3xl mx-auto">
         <h1 className="text-6xl md:text-8xl font-bold tracking-tight mb-6">
-          Swing{" "}
-          <span className="text-pastel-yellow">pure</span>
+          <span className="text-pastel-yellow">Swing</span>{" "}
+          <span className="text-white">pure</span>
         </h1>
         <p className="text-cream/70 text-lg md:text-xl leading-relaxed mb-10 max-w-xl mx-auto">
           Compare your swing to Tiger Woods&apos; iconic 2000 form. See exactly

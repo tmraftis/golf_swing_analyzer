@@ -19,8 +19,9 @@ export default function Header() {
             height={36}
             className="rounded-sm invert"
           />
-          <span className="text-cream font-semibold tracking-widest text-lg">
-            PURE
+          <span className="font-semibold tracking-widest text-lg">
+            <span className="text-pastel-yellow">SWING</span>{" "}
+            <span className="text-cream">PURE</span>
           </span>
         </Link>
 
