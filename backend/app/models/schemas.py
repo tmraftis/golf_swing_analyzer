@@ -42,6 +42,7 @@ class AnalysisResponse(BaseModel):
     upload_id: str
     swing_type: str
     processing_time_sec: float
+    similarity_score: int = 0
     user_angles: dict
     reference_angles: dict
     deltas: dict
@@ -54,3 +55,14 @@ class AnalysisResponse(BaseModel):
     user_all_landmarks: dict | None = None
     user_phase_images: dict | None = None
     reference_phase_images: dict | None = None
+
+
+class ShareRequest(BaseModel):
+    upload_id: str
+    view: str = "dtl"
+
+
+class ShareResponse(BaseModel):
+    share_token: str
+    share_url: str
+    expires_at: str | None = None

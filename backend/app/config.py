@@ -37,11 +37,22 @@ class Settings(BaseSettings):
     use_modal: bool = False  # Enable Modal for landmark extraction
     modal_target_height: int = 960  # Downscale frames before inference
 
+    # Share / viral features
+    share_db_path: str = "data/shares.db"
+    share_image_cache_dir: str = "data/share_images"
+    public_base_url: str = "http://localhost:3000"
+
     # PropelAuth settings
     propelauth_auth_url: str = ""
     propelauth_api_key: str = ""
 
-    model_config = {"env_file": ".env", "protected_namespaces": ("settings_",)}
+    model_config = {
+        "env_file": [
+            str(Path(__file__).parent.parent / ".env"),  # backend/.env
+            ".env",                                       # cwd fallback
+        ],
+        "protected_namespaces": ("settings_",),
+    }
 
 
 settings = Settings()

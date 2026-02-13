@@ -9,6 +9,8 @@ from app.config import settings
 from app.routes.upload import router as upload_router
 from app.routes.analysis import router as analysis_router
 from app.routes.video import router as video_router
+from app.routes.share import router as share_router
+from app.storage.share_store import init_db as init_share_db
 
 logger = logging.getLogger(__name__)
 
@@ -36,6 +38,9 @@ async def lifespan(app: FastAPI):
     upload_dir.mkdir(exist_ok=True)
     logger.info(f"Upload directory: {upload_dir.resolve()}")
 
+    # Initialise the share token database
+    init_share_db()
+
     yield  # App runs here
 
     # Shutdown
@@ -54,6 +59,7 @@ app.add_middleware(
 
 app.include_router(upload_router, prefix="/api")
 app.include_router(analysis_router, prefix="/api")
+app.include_router(share_router, prefix="/api")
 
 # Serve videos with range request support (needed for browser seeking)
 app.include_router(video_router)

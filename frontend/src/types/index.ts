@@ -125,6 +125,7 @@ export interface AnalysisResponse {
   upload_id: string;
   swing_type: string;
   processing_time_sec: number;
+  similarity_score?: number;
   user_angles: AngleData;
   reference_angles: AngleData;
   deltas: DeltaData;
@@ -135,6 +136,28 @@ export interface AnalysisResponse {
   user_phase_landmarks?: PhaseLandmarkData;
   reference_phase_landmarks?: PhaseLandmarkData;
   user_all_landmarks?: AllLandmarkData;
+  user_phase_images?: PhaseImageData;
+  reference_phase_images?: PhaseImageData;
+}
+
+// --- Share types ---
+
+export interface ShareResponse {
+  share_token: string;
+  share_url: string;
+  expires_at: string | null;
+}
+
+export interface SharedAnalysis {
+  status: string;
+  upload_id: string;
+  swing_type: string;
+  similarity_score: number;
+  view: string;
+  user_angles: AngleData;
+  reference_angles: AngleData;
+  deltas: DeltaData;
+  top_differences: TopDifference[];
   user_phase_images?: PhaseImageData;
   reference_phase_images?: PhaseImageData;
 }

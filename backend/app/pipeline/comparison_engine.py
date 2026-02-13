@@ -160,3 +160,26 @@ def rank_differences(
     )
 
     return selected
+
+
+def compute_similarity_score(deltas: dict) -> int:
+    """Compute an overall similarity percentage from angle deltas.
+
+    For each angle/phase pair the per-angle score is:
+        max(0, 1 - |delta| / 45)
+    so 0° delta = 100 % similarity, 45°+ delta = 0 %.
+
+    The final score is the mean of all per-angle scores, as an integer 0-100.
+    """
+    scores: list[float] = []
+
+    for view_deltas in deltas.values():
+        for phase_deltas in view_deltas.values():
+            for delta in phase_deltas.values():
+                if isinstance(delta, (int, float)):
+                    scores.append(max(0.0, 1.0 - abs(delta) / 45.0))
+
+    if not scores:
+        return 0
+
+    return round(sum(scores) / len(scores) * 100)
