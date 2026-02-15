@@ -1,7 +1,7 @@
 export default function LoadingSkeleton() {
   return (
-    <div className="min-h-screen px-6 py-12">
-      <div className="mx-auto max-w-6xl animate-pulse space-y-8">
+    <div className="min-h-screen px-6 py-6">
+      <div className="mx-auto max-w-6xl animate-pulse space-y-6">
         {/* Header */}
         <div className="text-center space-y-3">
           <div className="h-8 w-64 bg-cream/5 rounded mx-auto" />
@@ -17,11 +17,11 @@ export default function LoadingSkeleton() {
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <div className="space-y-2">
             <div className="h-4 w-24 bg-cream/5 rounded" />
-            <div className="aspect-video bg-cream/5 rounded-xl" />
+            <div className="aspect-video bg-cream/5 rounded-lg" />
           </div>
           <div className="space-y-2">
             <div className="h-4 w-32 bg-cream/5 rounded" />
-            <div className="aspect-video bg-cream/5 rounded-xl" />
+            <div className="aspect-video bg-cream/5 rounded-lg" />
           </div>
         </div>
 
@@ -40,7 +40,7 @@ export default function LoadingSkeleton() {
           <div className="h-5 w-48 bg-cream/5 rounded" />
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="h-48 bg-cream/5 rounded-xl" />
+              <div key={i} className="h-48 bg-cream/5 rounded-lg" />
             ))}
           </div>
         </div>

@@ -16,8 +16,8 @@ from .landmark_extractor import extract_landmarks_from_video, GOLF_LANDMARKS
 from .phase_detector import detect_swing_phases
 from .angle_calculator import calculate_angles
 from .reference_data import load_reference
-from .comparison_engine import compute_deltas, rank_differences, compute_similarity_score
-from .feedback_engine import generate_feedback
+from .comparison_engine import compute_deltas, rank_differences, rank_similarities, compute_similarity_score
+from .feedback_engine import generate_feedback, generate_similarity_titles
 
 logger = logging.getLogger(__name__)
 
@@ -359,6 +359,10 @@ def run_analysis(
     ranked = rank_differences(deltas, user_angles, ref_angles)
     top_differences = generate_feedback(ranked, user_angles, ref_angles)
 
+    # Step 7b: Rank similarities (closest matches to Tiger)
+    ranked_sims = rank_similarities(deltas, user_angles, ref_angles)
+    top_similarities = generate_similarity_titles(ranked_sims)
+
     # Step 4b: Extract phase landmarks for skeleton overlay
     user_phase_landmarks = {}
     reference_phase_landmarks = {}
@@ -426,6 +430,7 @@ def run_analysis(
         "reference_angles": ref_angles,
         "deltas": deltas,
         "top_differences": top_differences,
+        "top_similarities": top_similarities,
         "phase_frames": phase_frames,
         "video_urls": video_urls,
         "reference_video_urls": ref_video_urls,

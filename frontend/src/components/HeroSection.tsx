@@ -14,14 +14,14 @@ export default function HeroSection() {
           <span className="text-pastel-yellow">Swing</span>{" "}
           <span className="text-white">pure</span>
         </h1>
-        <p className="text-cream/70 text-lg md:text-xl leading-relaxed mb-10 max-w-xl mx-auto">
+        <p className="text-cream/70 text-lg md:text-xl leading-relaxed mb-8 max-w-xl mx-auto">
           Compare your swing to Tiger Woods&apos; iconic 2000 form. See exactly
           where to improve with AI-powered analysis.
         </p>
         {!loading && (
           <Link
             href={user ? "/upload" : "/api/auth/signup"}
-            className="inline-block bg-cardinal-red text-cream px-8 py-4 rounded-lg text-lg font-semibold hover:bg-cardinal-red/90 transition-colors"
+            className="inline-block bg-cardinal-red text-cream px-8 py-3 rounded-lg text-base font-semibold hover:bg-cardinal-red/90 transition-colors"
           >
             {user ? "Start Your Analysis" : "Get Started"}
           </Link>

@@ -143,7 +143,7 @@ def _bottom_fade(canvas: Image.Image, x: int, y: int, fw: int, fh: int, fade_h: 
 
 # ── Score ring ───────────────────────────────────────────
 
-def _draw_ring(canvas: Image.Image, cx: int, cy: int, r: int, score: int):
+def _draw_ring(canvas: Image.Image, cx: int, cy: int, r: int, score: int, show_percent: bool = False):
     """Draw a smooth anti-aliased score ring with number in centre.
 
     To avoid alpha-fringe ("bleed") that occurs when downscaling an RGBA
@@ -196,21 +196,8 @@ def _draw_ring(canvas: Image.Image, cx: int, cy: int, r: int, score: int):
         dm.arc(bbox_i, start=-90, end=-90 + sweep,
                fill=255, width=big_stroke)
 
-        # Round endcaps — filled circles at start and end of the arc
-        def _cap(angle_deg: float):
-            a = math.radians(angle_deg)
-            ex = big_c + big_r * math.cos(a)
-            ey = big_c + big_r * math.sin(a)
-            r_cap = half_s
-            cap_box = [
-                (int(ex - r_cap), int(ey - r_cap)),
-                (int(ex + r_cap), int(ey + r_cap)),
-            ]
-            dc.ellipse(cap_box, fill=GREEN_BR)
-            dm.ellipse(cap_box, fill=255)
-
-        _cap(-90)                        # start cap (12 o'clock)
-        _cap(-90 + sweep)                # end cap
+        # Note: endcaps removed — the arc with big_stroke width is clean enough
+        # after supersampling. Manually drawn cap circles were misaligning.
 
     # Downscale both layers independently
     colour = colour_big.resize((sz, sz), Image.Resampling.LANCZOS)
@@ -223,14 +210,35 @@ def _draw_ring(canvas: Image.Image, cx: int, cy: int, r: int, score: int):
 
     # Score text — drawn directly on the opaque canvas for crisp rendering
     draw = ImageDraw.Draw(canvas)
-    f_num = _f(54 * _S, bold=True)
-    score_str = str(score)
-    bb = draw.textbbox((0, 0), score_str, font=f_num)
-    tw = bb[2] - bb[0]
-    glyph_h = bb[3] - bb[1]
-    text_x = cx - tw // 2
-    text_y = cy - glyph_h // 2 - bb[1]
-    draw.text((text_x, text_y), score_str, fill=CREAM, font=f_num)
+    if show_percent:
+        # "83" large + "%" smaller, laid out as a single centred block
+        f_num = _f(48 * _S, bold=True)
+        f_pct = _f(24 * _S, bold=True)
+        num_str = str(score)
+        pct_str = "%"
+        bb_n = draw.textbbox((0, 0), num_str, font=f_num)
+        bb_p = draw.textbbox((0, 0), pct_str, font=f_pct)
+        num_w = bb_n[2] - bb_n[0]
+        pct_w = bb_p[2] - bb_p[0]
+        gap_px = 2 * _S
+        total_w = num_w + gap_px + pct_w
+        num_h = bb_n[3] - bb_n[1]
+        # Centre the combined block
+        num_x = cx - total_w // 2
+        num_y = cy - num_h // 2 - bb_n[1]
+        draw.text((num_x, num_y), num_str, fill=CREAM, font=f_num)
+        # Align % baseline with number baseline
+        pct_y = num_y + (bb_n[3] - bb_n[1]) - (bb_p[3] - bb_p[1])
+        draw.text((num_x + num_w + gap_px, pct_y), pct_str, fill=CREAM45, font=f_pct)
+    else:
+        f_num = _f(54 * _S, bold=True)
+        score_str = str(score)
+        bb = draw.textbbox((0, 0), score_str, font=f_num)
+        tw = bb[2] - bb[0]
+        glyph_h = bb[3] - bb[1]
+        text_x = cx - tw // 2
+        text_y = cy - glyph_h // 2 - bb[1]
+        draw.text((text_x, text_y), score_str, fill=CREAM, font=f_num)
 
 
 # ── Diff row ─────────────────────────────────────────────
@@ -278,9 +286,115 @@ def _draw_diff_row(draw: ImageDraw.ImageDraw, diff: dict, x: int, y: int, w: int
 
 # ── Public API ───────────────────────────────────────────
 
+def _draw_card_column(
+    draw: ImageDraw.ImageDraw,
+    items: list[dict],
+    header_text: str,
+    x: int,
+    y0: int,
+    w: int,
+    row_h: int,
+    row_gap: int,
+    accent_color: tuple,
+    show_delta: bool = True,
+):
+    """Draw a vertical stack of compact card rows with a header label.
+
+    Shared renderer for both similarities and differences columns.
+    """
+    S = _S
+    header_h = 22 * S
+    header_gap = 8 * S
+
+    # Header
+    draw.text(
+        (x, y0),
+        header_text,
+        fill=CREAM70,
+        font=_f(11 * S, bold=True),
+    )
+
+    row_y = y0 + header_h + header_gap
+    for i, item in enumerate(items):
+        ry = row_y + i * (row_h + row_gap)
+
+        # Subtle card background
+        draw.rounded_rectangle(
+            [(x, ry), (x + w, ry + row_h)],
+            radius=8 * S,
+            fill=BG_CARD,
+        )
+
+        # Accent dot — severity-based for diffs, fixed green for sims
+        if show_delta:
+            dot_color = _sev_color(item.get("severity", "minor"))
+        else:
+            dot_color = accent_color
+        dot_r = 3 * S
+        draw.ellipse(
+            [
+                (x + 10 * S, ry + row_h // 2 - dot_r),
+                (x + 10 * S + dot_r * 2, ry + row_h // 2 + dot_r),
+            ],
+            fill=dot_color,
+        )
+
+        # Title + phase — pixel-aware truncation
+        title = item.get("title", item.get("angle_name", ""))
+        f_title = _f(12 * S, bold=True)
+        max_title_w = w - 22 * S - 70 * S   # leave room for delta on right
+        bb_t = draw.textbbox((0, 0), title, font=f_title)
+        if (bb_t[2] - bb_t[0]) > max_title_w:
+            while len(title) > 5 and draw.textbbox((0, 0), title + "\u2026", font=f_title)[2] > max_title_w:
+                title = title[:-1]
+            title = title.rstrip() + "\u2026"
+        draw.text(
+            (x + 22 * S, ry + 6 * S),
+            title,
+            fill=CREAM,
+            font=f_title,
+        )
+        phase = item.get("phase", "").replace("_", " ").title()
+        draw.text(
+            (x + 22 * S, ry + 26 * S),
+            phase,
+            fill=CREAM20,
+            font=_f(9 * S),
+        )
+
+        # Delta on the right
+        if show_delta:
+            delta = item.get("delta", 0)
+            sign = "+" if delta > 0 else ""
+            delta_str = f"{sign}{delta:.1f}\u00b0"
+            f_delta = _f(14 * S, bold=True)
+            bb_d = draw.textbbox((0, 0), delta_str, font=f_delta)
+            tw_d = bb_d[2] - bb_d[0]
+            draw.text(
+                (x + w - tw_d - 10 * S, ry + (row_h - (bb_d[3] - bb_d[1])) // 2),
+                delta_str,
+                fill=dot_color,
+                font=f_delta,
+            )
+        else:
+            # Show a small checkmark or delta for similarities
+            delta = item.get("delta", 0)
+            delta_str = f"{abs(delta):.1f}\u00b0"
+            f_delta = _f(13 * S, bold=True)
+            bb_d = draw.textbbox((0, 0), delta_str, font=f_delta)
+            tw_d = bb_d[2] - bb_d[0]
+            draw.text(
+                (x + w - tw_d - 10 * S, ry + (row_h - (bb_d[3] - bb_d[1])) // 2),
+                delta_str,
+                fill=accent_color,
+                font=f_delta,
+            )
+
+
 def generate(
     similarity_score: int,
     top_differences: list[dict],
+    top_similarities: list[dict] | None = None,
     user_phase_image_path: str | None = None,
     ref_phase_image_path: str | None = None,
     view_label: str = "Down the Line",
@@ -291,6 +405,8 @@ def generate(
     line rendering, then downscales to 1080×1080 with Lanczos.
     """
     S = _S  # shorthand for the scale factor
+    if top_similarities is None:
+        top_similarities = []
 
     canvas = Image.new("RGB", (W, H), BG)
     draw = ImageDraw.Draw(canvas)
@@ -344,108 +460,86 @@ def generate(
     y += FRAMES_H
 
     # ── SCORE SECTION ────────────────────────────────────
+    # 3-column layout: [ring] [similarities] [differences]
     _vgradient(canvas, y, SCORE_H, (8, 40, 48), BG)
 
     # Thin top rule
     draw.line([(32 * S, y), (W - 32 * S, y)], fill=CREAM20, width=max(1, S // 2))
 
-    # Layout: ring on left, differences list on right
     margin = 32 * S
+    col_gap = 12 * S                     # gap between card columns
+
+    # Card columns: fixed width, right-aligned
+    card_col_w = 310 * S                 # ~310px at 1× per column
+    cards_total_w = card_col_w * 2 + col_gap
+    diff_x = W - margin - card_col_w                      # rightmost column
+    sim_x = diff_x - col_gap - card_col_w                 # middle column
+
+    # Column 1: Score ring — centred in the remaining left space
     ring_r = 52 * S
-    ring_col_w = ring_r * 2 + 40 * S     # width for ring column
-    ring_cx = margin + ring_col_w // 2
+    ring_left_space = sim_x - col_gap    # space from left edge to start of sim column
+    ring_cx = ring_left_space // 2       # centred in that space
     ring_cy = y + SCORE_H // 2 - 8 * S
-    _draw_ring(canvas, ring_cx, ring_cy, ring_r, similarity_score)
 
-    # "similarity" label below ring
-    sub_y = ring_cy + ring_r + 14 * S
-    f_sub = _f(12 * S)
-    bb_sub = draw.textbbox((0, 0), "similarity", font=f_sub)
-    tw_sub = bb_sub[2] - bb_sub[0]
-    draw.text((ring_cx - tw_sub // 2, sub_y), "similarity", fill=CREAM45, font=f_sub)
+    # Shared row sizing (needed early for score card height)
+    row_h = 48 * S
+    row_gap = 6 * S
 
-    # View label below that
-    f_view = _f(11 * S)
-    bb_vl = draw.textbbox((0, 0), view_label, font=f_view)
-    tw_vl = bb_vl[2] - bb_vl[0]
-    draw.text((ring_cx - tw_vl // 2, sub_y + 18 * S), view_label, fill=CREAM20, font=f_view)
-
-    # ── Top differences (right side) ─────────────────────
+    sims = top_similarities[:3]
     diffs = top_differences[:3]
-    diff_x = margin + ring_col_w + 20 * S
-    diff_w = W - diff_x - margin
-    if diffs:
-        # Compute total block height so we can centre it vertically
-        row_h = 56 * S
-        row_gap = 8 * S
-        header_h = 24 * S                # "Top differences vs Tiger" line height
-        header_gap = 10 * S              # space between header and first row
-        n = len(diffs)
-        block_h = header_h + header_gap + n * row_h + (n - 1) * row_gap
-        block_y0 = y + (SCORE_H - block_h) // 2   # vertically centred
 
-        # Header
-        draw.text(
-            (diff_x, block_y0),
-            "Top differences vs Tiger",
-            fill=CREAM70,
-            font=_f(12 * S, bold=True),
+    # Compute vertical centering based on the taller column
+    header_h = 22 * S
+    header_gap = 8 * S
+    max_n = max(len(sims), len(diffs), 1)
+    block_h = header_h + header_gap + max_n * row_h + (max_n - 1) * row_gap
+    block_y0 = y + (SCORE_H - block_h) // 2
+
+    # Score card background — same vertical extent as the card columns
+    score_card_x = margin
+    score_card_w = sim_x - col_gap - margin
+    draw.rounded_rectangle(
+        [(score_card_x, block_y0), (score_card_x + score_card_w, block_y0 + block_h)],
+        radius=8 * S,
+        fill=BG_CARD,
+    )
+
+    # "Similarity" header — top-left of card, matching other column headers
+    draw.text(
+        (score_card_x + 14 * S, block_y0 + 10 * S),
+        "Similarity",
+        fill=CREAM70,
+        font=_f(11 * S, bold=True),
+    )
+
+    # Centre the ring in the card area below the header
+    ring_area_top = block_y0 + header_h + header_gap
+    ring_area_h = block_h - header_h - header_gap
+    ring_cx = score_card_x + score_card_w // 2
+    ring_cy = ring_area_top + ring_area_h // 2
+    _draw_ring(canvas, ring_cx, ring_cy, ring_r, similarity_score, show_percent=True)
+
+    # Column 2: Similarities
+    if sims:
+        _draw_card_column(
+            draw, sims,
+            header_text="Matching Tiger",
+            x=sim_x, y0=block_y0, w=card_col_w,
+            row_h=row_h, row_gap=row_gap,
+            accent_color=GREEN_BR,
+            show_delta=False,
         )
 
-        # Compact diff rows
-        row_y = block_y0 + header_h + header_gap
-        for i, diff in enumerate(diffs):
-            ry = row_y + i * (row_h + row_gap)
-
-            # Subtle card background
-            draw.rounded_rectangle(
-                [(diff_x, ry), (diff_x + diff_w, ry + row_h)],
-                radius=8 * S,
-                fill=BG_CARD,
-            )
-
-            # Severity accent dot
-            accent = _sev_color(diff.get("severity", "minor"))
-            dot_r = 3 * S
-            draw.ellipse(
-                [
-                    (diff_x + 12 * S, ry + row_h // 2 - dot_r),
-                    (diff_x + 12 * S + dot_r * 2, ry + row_h // 2 + dot_r),
-                ],
-                fill=accent,
-            )
-
-            # Title + phase
-            title = diff.get("title", diff.get("angle_name", ""))
-            if len(title) > 24:
-                title = title[:22] + "\u2026"
-            draw.text(
-                (diff_x + 24 * S, ry + 8 * S),
-                title,
-                fill=CREAM,
-                font=_f(13 * S, bold=True),
-            )
-            phase = diff.get("phase", "").replace("_", " ").title()
-            draw.text(
-                (diff_x + 24 * S, ry + 28 * S),
-                phase,
-                fill=CREAM20,
-                font=_f(10 * S),
-            )
-
-            # Delta on the right
-            delta = diff.get("delta", 0)
-            sign = "+" if delta > 0 else ""
-            delta_str = f"{sign}{delta:.1f}\u00b0"
-            f_delta = _f(16 * S, bold=True)
-            bb_d = draw.textbbox((0, 0), delta_str, font=f_delta)
-            tw_d = bb_d[2] - bb_d[0]
-            draw.text(
-                (diff_x + diff_w - tw_d - 12 * S, ry + (row_h - (bb_d[3] - bb_d[1])) // 2),
-                delta_str,
-                fill=accent,
-                font=f_delta,
-            )
+    # Column 3: Differences
+    if diffs:
+        _draw_card_column(
+            draw, diffs,
+            header_text="Work on",
+            x=diff_x, y0=block_y0, w=card_col_w,
+            row_h=row_h, row_gap=row_gap,
+            accent_color=RED,
+            show_delta=True,
+        )
     else:
         # No diffs — show encouraging message
         msg_y = y + SCORE_H // 2 - 12 * S

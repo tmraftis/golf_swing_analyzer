@@ -31,7 +31,7 @@ export default function DifferenceCard({ diff, onClick }: DifferenceCardProps) {
 
   return (
     <div
-      className={`rounded-xl border ${colors.border} ${colors.bg} p-6 ${
+      className={`rounded-lg border ${colors.border} ${colors.bg} p-5 ${
         onClick ? "cursor-pointer hover:bg-cream/5 transition-colors" : ""
       }`}
       onClick={onClick}
@@ -42,7 +42,7 @@ export default function DifferenceCard({ diff, onClick }: DifferenceCardProps) {
             #{diff.rank}
           </span>
           <div>
-            <h4 className="text-lg font-semibold leading-tight">
+            <h4 className="font-semibold leading-tight">
               {diff.title}
             </h4>
             <div className="flex items-center gap-2 mt-1">

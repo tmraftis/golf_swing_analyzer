@@ -37,6 +37,17 @@ class TopDifference(BaseModel):
     coaching_tip: str
 
 
+class TopSimilarity(BaseModel):
+    rank: int
+    angle_name: str
+    phase: str
+    view: str
+    user_value: float
+    reference_value: float
+    delta: float
+    title: str
+
+
 class AnalysisResponse(BaseModel):
     status: str
     upload_id: str
@@ -47,6 +58,7 @@ class AnalysisResponse(BaseModel):
     reference_angles: dict
     deltas: dict
     top_differences: list[TopDifference]
+    top_similarities: list[TopSimilarity] = []
     phase_frames: dict
     video_urls: dict[str, str] | None = None
     reference_video_urls: dict[str, str] | None = None

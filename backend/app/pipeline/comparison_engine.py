@@ -162,6 +162,77 @@ def rank_differences(
     return selected
 
 
+def rank_similarities(
+    deltas: dict,
+    user_angles: dict,
+    ref_angles: dict,
+) -> list[dict]:
+    """Rank all angle measurements by closeness to reference (smallest delta first).
+
+    Returns a list of the top 3 most similar angles — the ones where the
+    user most closely matches Tiger.  Only includes angles that survive the
+    same exclusion filter as rank_differences for consistency.
+    """
+    all_sims = []
+
+    for view, view_deltas in deltas.items():
+        for phase, phase_deltas in view_deltas.items():
+            for angle_name, delta in phase_deltas.items():
+                if angle_name in _EXCLUDE_ANGLES_FROM_RANKING:
+                    continue
+
+                user_val = user_angles[view][phase]["angles"].get(angle_name)
+                ref_val = ref_angles[view][phase]["angles"].get(angle_name)
+
+                if user_val is None or ref_val is None:
+                    continue
+
+                all_sims.append(
+                    {
+                        "angle_name": angle_name,
+                        "phase": phase,
+                        "view": view,
+                        "user_value": user_val,
+                        "reference_value": ref_val,
+                        "delta": delta,
+                        "abs_delta": abs(delta),
+                    }
+                )
+
+    # Sort by absolute delta (smallest first — most similar)
+    all_sims.sort(key=lambda d: d["abs_delta"])
+
+    # Select top 3 with view balance (max 2 from same view when multi-view)
+    available_views = list(deltas.keys())
+    max_per_view = 2 if len(available_views) > 1 else 3
+    selected = []
+    view_counts = {v: 0 for v in available_views}
+
+    for sim in all_sims:
+        if len(selected) >= 3:
+            break
+        view = sim["view"]
+        if view_counts.get(view, 0) >= max_per_view:
+            continue
+        view_counts[view] = view_counts.get(view, 0) + 1
+        selected.append(sim)
+
+    # Add rank numbers and clean up
+    for i, sim in enumerate(selected):
+        sim["rank"] = i + 1
+        sim.pop("abs_delta", None)
+
+    logger.info(
+        f"Top {len(selected)} similarities: "
+        + ", ".join(
+            f"{s['angle_name']}@{s['phase']} ({s['delta']:+.1f}°)"
+            for s in selected
+        )
+    )
+
+    return selected
+
+
 def compute_similarity_score(deltas: dict) -> int:
     """Compute an overall similarity percentage from angle deltas.
 

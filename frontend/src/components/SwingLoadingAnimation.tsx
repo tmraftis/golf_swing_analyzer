@@ -46,7 +46,7 @@ export default function SwingLoadingAnimation({
   }, [phase]);
 
   return (
-    <div className="rounded-xl border-2 border-pastel-yellow/30 bg-pastel-yellow/5 p-8 text-center">
+    <div className="rounded-lg border-2 border-pastel-yellow/30 bg-pastel-yellow/5 p-6 text-center">
       {/* SVG silhouette container — cross-fade between 4 poses */}
       <div className="relative w-48 h-52 mx-auto mb-6">
         {/* Subtle glow behind silhouette */}

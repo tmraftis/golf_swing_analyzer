@@ -78,7 +78,7 @@ export default function VideoDropZone({
     const sizeMB = (file.file.size / (1024 * 1024)).toFixed(1);
     return (
       <div
-        className={`rounded-xl border-2 p-6 ${
+        className={`rounded-lg border-2 p-5 ${
           file.validated
             ? "border-forest-green/50 bg-forest-green/5"
             : "border-cardinal-red/50 bg-cardinal-red/5"
@@ -126,26 +126,23 @@ export default function VideoDropZone({
   return (
     <div
       {...getRootProps()}
-      className={`rounded-xl border-2 border-dashed p-8 text-center cursor-pointer transition-colors ${
+      className={`rounded-lg border-2 border-dashed p-6 text-center cursor-pointer transition-colors ${
         isDragActive
           ? "border-forest-green bg-forest-green/5"
           : "border-cream/20 hover:border-cream/40"
       }`}
     >
       <input {...getInputProps()} />
-      <div className="text-cream/30 mb-4">
-        <svg className="w-10 h-10 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+      <div className="text-cream/30 mb-2">
+        <svg className="w-8 h-8 mx-auto" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
           <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
         </svg>
       </div>
-      <h3 className="font-semibold text-sm uppercase tracking-wide text-cream/60 mb-2">
-        {label}
-      </h3>
-      <p className="text-sm text-cream/40 mb-2">
+      <p className="text-sm text-cream/40 mb-1">
         Drag &amp; drop or click to select
       </p>
       <p className="text-xs text-cream/30">
-        {hint} · {ACCEPTED_EXTENSIONS.join(", ")} · Max 30s
+        {ACCEPTED_EXTENSIONS.join(", ")} · Max 30s
       </p>
     </div>
   );
