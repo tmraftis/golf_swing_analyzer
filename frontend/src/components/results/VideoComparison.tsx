@@ -187,7 +187,7 @@ export default function VideoComparison({
           <h3 className="text-sm font-medium text-cream/50 mb-2">
             Your Swing
           </h3>
-          <div className="rounded-xl overflow-hidden bg-black/30 aspect-video relative">
+          <div className="rounded-lg overflow-hidden bg-black/30 aspect-video relative">
             {userVideoUrl && (
               <video
                 ref={userVideoRef}
@@ -225,7 +225,7 @@ export default function VideoComparison({
           <h3 className="text-sm font-medium text-cream/50 mb-2">
             Tiger Woods 2000
           </h3>
-          <div className="rounded-xl overflow-hidden bg-black/30 aspect-video relative">
+          <div className="rounded-lg overflow-hidden bg-black/30 aspect-video relative">
             {refVideoUrl && (
               <video
                 ref={refVideoRef}

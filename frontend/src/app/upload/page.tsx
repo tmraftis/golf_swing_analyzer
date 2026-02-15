@@ -6,7 +6,7 @@ export default async function UploadPage() {
   await getUserOrRedirect();
 
   return (
-    <div className="min-h-screen px-6 py-12">
+    <div className="min-h-screen px-6 py-6">
       <div className="mx-auto max-w-2xl">
         <UploadForm />
       </div>

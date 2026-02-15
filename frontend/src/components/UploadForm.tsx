@@ -153,22 +153,13 @@ export default function UploadForm() {
   }
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-5">
       {/* Page heading */}
-      <div>
-        <h1 className="text-3xl font-bold mb-2">Upload Your Swing</h1>
-        <p className="text-cream/50">
-          Select your swing type and camera angle, then upload a video of your
-          swing.
-        </p>
-      </div>
+      <h1 className="text-2xl font-bold">Upload Your Swing</h1>
 
       {/* Step 1: Swing type */}
       <div>
-        <h2 className="text-lg font-semibold mb-1">Swing Type</h2>
-        <p className="text-sm text-cream/50 mb-4">
-          Select the type of swing you&apos;re uploading.
-        </p>
+        <h2 className="text-sm font-semibold mb-2 text-cream/60 uppercase tracking-wide">Swing Type</h2>
         <SwingTypeSelector
           selected={state.swingType}
           onSelect={(t) => dispatch({ type: "SET_SWING_TYPE", payload: t })}
@@ -177,27 +168,24 @@ export default function UploadForm() {
 
       {/* Step 2: Camera angle */}
       <div>
-        <h2 className="text-lg font-semibold mb-1">Camera Angle</h2>
-        <p className="text-sm text-cream/50 mb-4">
-          Choose which angle you filmed your swing from.
-        </p>
-        <div className="grid grid-cols-2 gap-4">
+        <h2 className="text-sm font-semibold mb-2 text-cream/60 uppercase tracking-wide">Camera Angle</h2>
+        <div className="grid grid-cols-2 gap-3">
           <button
             onClick={() => dispatch({ type: "SET_VIEW", payload: "dtl" })}
-            className={`relative rounded-xl border-2 p-6 text-left transition-colors ${
+            className={`relative rounded-lg border-2 p-4 text-left transition-colors ${
               state.view === "dtl"
                 ? "border-forest-green bg-forest-green/10"
                 : "border-cream/15 hover:border-cream/30"
             }`}
           >
-            <h3 className="text-lg font-semibold mb-1">Down the Line</h3>
-            <p className="text-sm text-cream/50">
-              Camera behind the golfer, looking at the target line
+            <h3 className="font-semibold mb-0.5">Down the Line</h3>
+            <p className="text-xs text-cream/50">
+              Camera behind the golfer
             </p>
             {state.view === "dtl" && (
-              <div className="absolute top-4 right-4">
+              <div className="absolute top-3 right-3">
                 <svg
-                  className="w-5 h-5 text-forest-green"
+                  className="w-4 h-4 text-forest-green"
                   fill="currentColor"
                   viewBox="0 0 20 20"
                 >
@@ -213,20 +201,20 @@ export default function UploadForm() {
 
           <button
             onClick={() => dispatch({ type: "SET_VIEW", payload: "fo" })}
-            className={`relative rounded-xl border-2 p-6 text-left transition-colors ${
+            className={`relative rounded-lg border-2 p-4 text-left transition-colors ${
               state.view === "fo"
                 ? "border-forest-green bg-forest-green/10"
                 : "border-cream/15 hover:border-cream/30"
             }`}
           >
-            <h3 className="text-lg font-semibold mb-1">Face On</h3>
-            <p className="text-sm text-cream/50">
-              Camera facing the golfer from the target side
+            <h3 className="font-semibold mb-0.5">Face On</h3>
+            <p className="text-xs text-cream/50">
+              Camera facing the golfer
             </p>
             {state.view === "fo" && (
-              <div className="absolute top-4 right-4">
+              <div className="absolute top-3 right-3">
                 <svg
-                  className="w-5 h-5 text-forest-green"
+                  className="w-4 h-4 text-forest-green"
                   fill="currentColor"
                   viewBox="0 0 20 20"
                 >
@@ -244,11 +232,7 @@ export default function UploadForm() {
 
       {/* Step 3: Video upload */}
       <div>
-        <h2 className="text-lg font-semibold mb-1">Upload Video</h2>
-        <p className="text-sm text-cream/50 mb-4">
-          Upload your {state.view === "dtl" ? "down-the-line" : "face-on"} swing
-          video.
-        </p>
+        <h2 className="text-sm font-semibold mb-2 text-cream/60 uppercase tracking-wide">Upload Video</h2>
         <VideoDropZone
           angle={state.view}
           label={state.view === "dtl" ? "Down the Line" : "Face On"}
@@ -280,7 +264,7 @@ export default function UploadForm() {
         disabled={!canSubmit}
         loading={state.isUploading}
         onClick={handleSubmit}
-        className="w-full py-4 text-base"
+        className="w-full py-3 text-base"
       >
         Submit for Analysis
       </Button>

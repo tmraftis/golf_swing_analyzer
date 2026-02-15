@@ -662,6 +662,20 @@ def generate_feedback(
     return enriched
 
 
+def generate_similarity_titles(ranked_sims: list[dict]) -> list[dict]:
+    """Add human-readable titles to top similarity entries.
+
+    Similarities don't need coaching tips — just a clear label.
+    """
+    enriched = []
+    for sim in ranked_sims:
+        angle_name = sim["angle_name"]
+        phase = sim["phase"]
+        title = f"{_format_angle_name(angle_name)} at {_format_phase(phase)}"
+        enriched.append({**sim, "title": title})
+    return enriched
+
+
 def _format_angle_name(name: str) -> str:
     """Convert angle_name to human-readable format."""
     replacements = {

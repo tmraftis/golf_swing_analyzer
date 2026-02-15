@@ -33,18 +33,18 @@ const features = [
 
 export default function FeatureCards() {
   return (
-    <section className="px-6 py-24 bg-blue-charcoal">
+    <section className="px-6 py-16 bg-blue-charcoal">
       <div className="mx-auto max-w-6xl">
-        <h2 className="text-3xl font-bold text-center mb-16">How it works</h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+        <h2 className="text-2xl font-bold text-center mb-10">How it works</h2>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           {features.map((feature, i) => (
             <div
               key={i}
-              className="border border-cream/10 rounded-xl p-8 hover:border-cream/20 transition-colors"
+              className="border border-cream/10 rounded-lg p-6 hover:border-cream/20 transition-colors"
             >
-              <div className="text-pastel-yellow mb-4">{feature.icon}</div>
-              <h3 className="text-xl font-semibold mb-3">{feature.title}</h3>
-              <p className="text-cream/60 leading-relaxed">
+              <div className="text-pastel-yellow mb-3">{feature.icon}</div>
+              <h3 className="font-semibold mb-2">{feature.title}</h3>
+              <p className="text-sm text-cream/60 leading-relaxed">
                 {feature.description}
               </p>
             </div>

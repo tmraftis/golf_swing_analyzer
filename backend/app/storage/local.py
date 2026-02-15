@@ -1,3 +1,4 @@
+import hashlib
 import logging
 from pathlib import Path
 
@@ -24,10 +25,20 @@ async def save_upload(
 
     # Step 1: Write raw upload to disk
     raw_size = 0
+    hasher = hashlib.sha256()
     with open(raw_filepath, "wb") as f:
         while chunk := await file.read(1024 * 1024):  # 1MB chunks
             f.write(chunk)
+            hasher.update(chunk)
             raw_size += len(chunk)
+
+    # Step 1b: Save SHA-256 hash of raw video for cross-upload deduplication.
+    # The hash is computed BEFORE compression so identical source videos
+    # always produce the same hash, regardless of ffmpeg non-determinism.
+    content_hash = hasher.hexdigest()
+    hash_filepath = settings.upload_dir / f"{upload_id}_{angle}_hash.txt"
+    hash_filepath.write_text(content_hash)
+    logger.info(f"Content hash for {raw_filename}: {content_hash[:16]}...")
 
     # Step 2: Compress to H.264 .mp4 (if enabled)
     if not settings.compress_uploads:

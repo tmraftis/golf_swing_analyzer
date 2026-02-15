@@ -103,6 +103,7 @@ async def get_shared_analysis(share_token: str):
         "reference_angles": result.get("reference_angles", {}),
         "deltas": result.get("deltas", {}),
         "top_differences": result.get("top_differences", []),
+        "top_similarities": result.get("top_similarities", []),
         "user_phase_images": result.get("user_phase_images"),
         "reference_phase_images": result.get("reference_phase_images"),
     }
@@ -154,6 +155,7 @@ async def get_share_image(share_token: str):
         img_bytes = generate(
             similarity_score=result.get("similarity_score", 0),
             top_differences=result.get("top_differences", []),
+            top_similarities=result.get("top_similarities", []),
             user_phase_image_path=user_img_path,
             ref_phase_image_path=ref_img_path,
             view_label=view_label,

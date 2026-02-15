@@ -1,27 +1,15 @@
 """Wrapper around scripts/calculate_angles.py for API use."""
 
-import sys
-import os
 import logging
 import io
 from contextlib import redirect_stdout
 
+from app.paths import ensure_scripts_importable
 from .models import AngleCalculationError
 
 logger = logging.getLogger(__name__)
 
-# Add scripts/ to path so we can import calculate_angles.
-# Check multiple locations: local dev (3 levels up) and Docker (2 levels up).
-_pipeline_dir = os.path.dirname(__file__)
-_candidates = [
-    os.path.join(_pipeline_dir, "..", "..", "..", "scripts"),   # local dev
-    os.path.join(_pipeline_dir, "..", "..", "scripts"),         # Docker / Railway
-]
-for _candidate in _candidates:
-    _abs = os.path.abspath(_candidate)
-    if os.path.isdir(_abs) and _abs not in sys.path:
-        sys.path.insert(0, _abs)
-        break
+ensure_scripts_importable()
 
 from calculate_angles import analyze_video as _analyze_video  # noqa: E402
 

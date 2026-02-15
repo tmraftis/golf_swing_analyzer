@@ -35,6 +35,7 @@ def compress_video(input_path: Path, output_path: Path) -> bool:
         "ffmpeg",
         "-y",                       # overwrite output if exists
         "-i", str(input_path),      # input file
+        "-vsync", "vfr",            # normalize VFR timing metadata (no frame dup/drop)
         "-c:v", "libx264",          # H.264 video codec
         "-preset", "fast",          # speed/quality tradeoff
         "-b:v", "4M",               # target video bitrate

@@ -129,7 +129,7 @@ export default function ShareModal({
       className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
       onClick={handleBackdropClick}
     >
-      <div className="relative w-full max-w-lg mx-4 rounded-2xl border border-cream/10 bg-blue-charcoal p-8 shadow-2xl">
+      <div className="relative w-full max-w-lg mx-4 rounded-xl border border-cream/10 bg-blue-charcoal p-6 shadow-2xl">
         {/* Close button */}
         <button
           onClick={onClose}
@@ -141,8 +141,8 @@ export default function ShareModal({
           </svg>
         </button>
 
-        <h2 className="text-2xl font-bold mb-2">Share Your Results</h2>
-        <p className="text-cream/50 text-sm mb-6">
+        <h2 className="text-xl font-bold mb-2">Share Your Results</h2>
+        <p className="text-cream/50 text-sm mb-5">
           Show off your swing analysis and challenge friends to beat your score.
         </p>
 
@@ -167,7 +167,7 @@ export default function ShareModal({
             <button
               onClick={handleDownloadImage}
               disabled={downloading}
-              className="w-full flex items-center gap-4 rounded-xl border border-cream/10 bg-cream/5 p-4 hover:bg-cream/10 transition-colors text-left"
+              className="w-full flex items-center gap-4 rounded-lg border border-cream/10 bg-cream/5 p-4 hover:bg-cream/10 transition-colors text-left"
             >
               <div className="flex-shrink-0 w-12 h-12 rounded-lg bg-forest-green/20 flex items-center justify-center">
                 <svg className="w-6 h-6 text-forest-green" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
@@ -187,7 +187,7 @@ export default function ShareModal({
             {/* Copy Link */}
             <button
               onClick={handleCopyLink}
-              className="w-full flex items-center gap-4 rounded-xl border border-cream/10 bg-cream/5 p-4 hover:bg-cream/10 transition-colors text-left"
+              className="w-full flex items-center gap-4 rounded-lg border border-cream/10 bg-cream/5 p-4 hover:bg-cream/10 transition-colors text-left"
             >
               <div className="flex-shrink-0 w-12 h-12 rounded-lg bg-pastel-yellow/20 flex items-center justify-center">
                 <svg className="w-6 h-6 text-pastel-yellow" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>

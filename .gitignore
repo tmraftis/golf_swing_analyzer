@@ -45,3 +45,9 @@ frontend/.env.local
 # Backend
 backend/uploads/
 backend/.env
+backend/data/shares.db
+backend/data/share_images/
+
+# Legacy data dir (moved to backend/data/)
+data/share_images/
+data/shares.db

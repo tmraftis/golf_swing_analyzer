@@ -129,7 +129,7 @@ export default function AngleComparisonTable({
       {isExpanded && (
         <>
           {/* Desktop table */}
-          <div className="hidden md:block rounded-xl border border-cream/10 overflow-hidden">
+          <div className="hidden md:block rounded-lg border border-cream/10 overflow-hidden">
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-cream/10 bg-cream/3">

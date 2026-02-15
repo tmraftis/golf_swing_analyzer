@@ -5,6 +5,7 @@ Coordinates: landmark extraction → phase detection → angle calculation
 """
 
 import glob
+import json
 import logging
 import os
 import time
@@ -16,10 +17,179 @@ from .landmark_extractor import extract_landmarks_from_video, GOLF_LANDMARKS
 from .phase_detector import detect_swing_phases
 from .angle_calculator import calculate_angles
 from .reference_data import load_reference
-from .comparison_engine import compute_deltas, rank_differences, compute_similarity_score
-from .feedback_engine import generate_feedback
+from .comparison_engine import compute_deltas, rank_differences, rank_similarities, compute_similarity_score
+from .feedback_engine import generate_feedback, generate_similarity_titles
 
 logger = logging.getLogger(__name__)
+
+# Number of decimal places to keep for landmark coordinates.
+# Absorbs GPU floating-point jitter across different workers while
+# retaining enough precision for accurate phase detection and angles.
+LANDMARK_ROUND_DECIMALS = 4
+
+# Bump this when landmark extraction or rounding logic changes.
+# Cached landmarks with an older version are treated as stale and re-extracted.
+LANDMARK_CACHE_VERSION = 2
+
+
+def _round_landmarks(landmarks_data: dict, decimals: int = LANDMARK_ROUND_DECIMALS) -> dict:
+    """Round all landmark coordinates to absorb GPU floating-point jitter.
+
+    Different GPU workers (or even different runs on the same GPU) can
+    produce slightly different floating-point values for the same frame.
+    Rounding to a fixed number of decimal places makes downstream
+    phase detection and angle calculation deterministic regardless of
+    which worker produced the landmarks.
+
+    Modifies landmarks_data in-place and returns it for convenience.
+    """
+    # Parse resolution once for pixel coord recomputation
+    res = landmarks_data.get("summary", {}).get("resolution", "0x0")
+    parts = res.split("x") if "x" in res else ["0", "0"]
+    img_w = int(parts[0])
+    img_h = int(parts[1]) if len(parts) > 1 else 0
+
+    for frame in landmarks_data.get("frames", []):
+        if not frame.get("detected"):
+            continue
+        for name, lm in frame.get("landmarks", {}).items():
+            if "x" in lm:
+                lm["x"] = round(lm["x"], decimals)
+            if "y" in lm:
+                lm["y"] = round(lm["y"], decimals)
+            if "z" in lm:
+                lm["z"] = round(lm["z"], decimals)
+            # Recompute pixel coords from rounded normalized coords
+            if "pixel_x" in lm and img_w > 0:
+                lm["pixel_x"] = int(lm["x"] * img_w)
+            if "pixel_y" in lm and img_h > 0:
+                lm["pixel_y"] = int(lm["y"] * img_h)
+    return landmarks_data
+
+
+def _landmark_cache_path(video_path: str) -> str:
+    """Return the path to the cached landmarks JSON for a video file.
+
+    Cache file sits alongside the video: /uploads/abc_dtl.mp4 → /uploads/abc_dtl_landmarks.json
+    """
+    base, _ = os.path.splitext(video_path)
+    return f"{base}_landmarks.json"
+
+
+def _load_cached_landmarks(video_path: str) -> dict | None:
+    """Load cached landmark data from disk if it exists and is current version.
+
+    Returns the landmark dict or None if no cache is found or version is stale.
+    """
+    cache_path = _landmark_cache_path(video_path)
+    if not os.path.exists(cache_path):
+        return None
+    try:
+        with open(cache_path) as f:
+            data = json.load(f)
+
+        # Reject stale caches from before IMAGE mode / rounding changes
+        cached_version = data.get("_cache_version", 0)
+        if cached_version < LANDMARK_CACHE_VERSION:
+            logger.info(
+                f"Stale landmark cache {os.path.basename(cache_path)} "
+                f"(version {cached_version} < {LANDMARK_CACHE_VERSION}), ignoring"
+            )
+            return None
+
+        total = len(data.get("frames", []))
+        detected = sum(1 for fr in data.get("frames", []) if fr.get("detected"))
+        logger.info(
+            f"Loaded cached landmarks from {os.path.basename(cache_path)} "
+            f"(v{cached_version}, {detected}/{total} frames detected)"
+        )
+        return data
+    except (json.JSONDecodeError, OSError) as e:
+        logger.warning(f"Failed to load landmark cache {cache_path}: {e}")
+        return None
+
+
+def _save_landmark_cache(video_path: str, landmarks_data: dict) -> None:
+    """Save landmark data to disk cache alongside the video file.
+
+    Stamps the data with the current LANDMARK_CACHE_VERSION so stale
+    caches can be detected and rejected on load.
+    """
+    cache_path = _landmark_cache_path(video_path)
+    landmarks_data["_cache_version"] = LANDMARK_CACHE_VERSION
+    try:
+        with open(cache_path, "w") as f:
+            json.dump(landmarks_data, f)
+        size_mb = os.path.getsize(cache_path) / 1e6
+        logger.info(
+            f"Cached landmarks to {os.path.basename(cache_path)} "
+            f"(v{LANDMARK_CACHE_VERSION}, {size_mb:.1f}MB)"
+        )
+    except OSError as e:
+        logger.warning(f"Failed to save landmark cache {cache_path}: {e}")
+
+
+def _find_landmarks_by_hash(upload_dir: str, upload_id: str, view: str) -> dict | None:
+    """Look for cached landmarks from a previous upload with the same video hash.
+
+    Scans the uploads directory for hash files matching the current upload's
+    content hash. If a match is found AND that upload has cached landmarks,
+    copies the landmarks and returns them. This ensures re-uploading the same
+    video always produces identical results, regardless of ffmpeg non-determinism.
+
+    Returns the landmark dict or None if no match is found.
+    """
+    # Read this upload's hash
+    hash_path = os.path.join(upload_dir, f"{upload_id}_{view}_hash.txt")
+    if not os.path.exists(hash_path):
+        logger.debug(f"No hash file found for {upload_id}_{view}")
+        return None
+
+    try:
+        our_hash = open(hash_path).read().strip()
+    except OSError:
+        return None
+
+    if not our_hash:
+        return None
+
+    # Scan all hash files for the same view
+    import glob as glob_mod
+    pattern = os.path.join(upload_dir, f"*_{view}_hash.txt")
+    for other_hash_path in glob_mod.glob(pattern):
+        other_basename = os.path.basename(other_hash_path)
+        # Skip our own hash file
+        if other_basename == f"{upload_id}_{view}_hash.txt":
+            continue
+
+        try:
+            other_hash = open(other_hash_path).read().strip()
+        except OSError:
+            continue
+
+        if other_hash != our_hash:
+            continue
+
+        # Found a matching hash! Extract the other upload_id from filename
+        # Format: {upload_id}_{view}_hash.txt
+        other_upload_id = other_basename.rsplit(f"_{view}_hash.txt", 1)[0]
+
+        # Look for cached landmarks from that upload
+        # Try common video extensions
+        for ext in (".mp4", ".mov", ".MOV"):
+            other_video_path = os.path.join(
+                upload_dir, f"{other_upload_id}_{view}{ext}"
+            )
+            cached = _load_cached_landmarks(other_video_path)
+            if cached is not None:
+                logger.info(
+                    f"Reusing landmarks from matching hash: "
+                    f"{other_upload_id} -> {upload_id} ({view}, hash={our_hash[:16]}...)"
+                )
+                return cached
+
+    logger.debug(f"No matching hash found for {upload_id}_{view}")
+    return None
 
 
 def _extract_phase_landmarks(landmarks_data: dict, phases: dict) -> dict:
@@ -307,31 +477,62 @@ def run_analysis(
         video_paths[view] = _find_video(upload_dir, upload_id, view)
     logger.info(f"Found videos: {video_paths}")
 
-    # Step 2: Extract landmarks
+    # Step 2: Extract landmarks (with caching for determinism)
+    # Priority: (1) same-upload cache, (2) cross-upload hash match, (3) fresh extraction.
+    # This guarantees identical results when re-uploading the same source video.
     landmarks = {}
-    if use_modal:
-        if len(views) == 2 and "dtl" in views and "fo" in views:
-            # Both views — use parallel Modal extraction
-            dtl_lm, fo_lm = _extract_landmarks_modal(
-                video_paths["dtl"], video_paths["fo"],
-                frame_step, min_detection_rate,
-                modal_target_height, model_path,
-            )
-            landmarks["dtl"] = dtl_lm
-            landmarks["fo"] = fo_lm
-        else:
-            # Single view — use single Modal extraction
-            for view in views:
-                landmarks[view] = _extract_landmarks_modal_single(
-                    video_paths[view], frame_step, min_detection_rate,
+    uncached_views = []
+
+    for view in views:
+        # Try same-upload cache first
+        cached = _load_cached_landmarks(video_paths[view])
+        if cached is not None:
+            landmarks[view] = cached
+            continue
+
+        # Try cross-upload hash-based deduplication
+        hash_cached = _find_landmarks_by_hash(upload_dir, upload_id, view)
+        if hash_cached is not None:
+            landmarks[view] = hash_cached
+            # Save a copy for this upload so future re-analyses are fast
+            _save_landmark_cache(video_paths[view], hash_cached)
+            continue
+
+        uncached_views.append(view)
+
+    if uncached_views:
+        if use_modal:
+            if (
+                len(uncached_views) == 2
+                and "dtl" in uncached_views
+                and "fo" in uncached_views
+            ):
+                # Both views need extraction — use parallel Modal
+                dtl_lm, fo_lm = _extract_landmarks_modal(
+                    video_paths["dtl"], video_paths["fo"],
+                    frame_step, min_detection_rate,
                     modal_target_height, model_path,
                 )
-    else:
-        for view in views:
-            logger.info(f"Extracting landmarks from {view.upper()} video...")
-            landmarks[view] = extract_landmarks_from_video(
-                video_paths[view], model_path, frame_step, min_detection_rate
-            )
+                landmarks["dtl"] = dtl_lm
+                landmarks["fo"] = fo_lm
+            else:
+                # Single uncached view — use single Modal extraction
+                for view in uncached_views:
+                    landmarks[view] = _extract_landmarks_modal_single(
+                        video_paths[view], frame_step, min_detection_rate,
+                        modal_target_height, model_path,
+                    )
+        else:
+            for view in uncached_views:
+                logger.info(f"Extracting landmarks from {view.upper()} video...")
+                landmarks[view] = extract_landmarks_from_video(
+                    video_paths[view], model_path, frame_step, min_detection_rate
+                )
+
+        # Round landmarks to absorb GPU floating-point jitter, then cache
+        for view in uncached_views:
+            _round_landmarks(landmarks[view])
+            _save_landmark_cache(video_paths[view], landmarks[view])
 
     # Step 3: Detect phases
     phases = {}
@@ -359,6 +560,10 @@ def run_analysis(
     ranked = rank_differences(deltas, user_angles, ref_angles)
     top_differences = generate_feedback(ranked, user_angles, ref_angles)
 
+    # Step 7b: Rank similarities (closest matches to Tiger)
+    ranked_sims = rank_similarities(deltas, user_angles, ref_angles)
+    top_similarities = generate_similarity_titles(ranked_sims)
+
     # Step 4b: Extract phase landmarks for skeleton overlay
     user_phase_landmarks = {}
     reference_phase_landmarks = {}
@@ -385,11 +590,11 @@ def run_analysis(
         )
 
     # Reference video phase frame images (Tiger)
-    from .reference_data import PROJECT_ROOT
+    from app.paths import REFERENCE_DATA_DIR
     ref_phase_images = {}
     for view in views:
         ref_video = str(
-            PROJECT_ROOT / "reference_data" / swing_type
+            REFERENCE_DATA_DIR / swing_type
             / f"tiger_2000_{swing_type}_{view}.mov"
         )
         ref_phase_images[view] = _extract_ref_phase_frame_images(
@@ -426,6 +631,7 @@ def run_analysis(
         "reference_angles": ref_angles,
         "deltas": deltas,
         "top_differences": top_differences,
+        "top_similarities": top_similarities,
         "phase_frames": phase_frames,
         "video_urls": video_urls,
         "reference_video_urls": ref_video_urls,

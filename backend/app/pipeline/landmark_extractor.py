@@ -100,11 +100,10 @@ def extract_landmarks_from_video(
 
     options = PoseLandmarkerOptions(
         base_options=BaseOptions(model_asset_path=model_path),
-        running_mode=RunningMode.VIDEO,
+        running_mode=RunningMode.IMAGE,
         num_poses=1,
         min_pose_detection_confidence=0.5,
         min_pose_presence_confidence=0.5,
-        min_tracking_confidence=0.5,
     )
 
     all_landmarks = []
@@ -134,7 +133,7 @@ def extract_landmarks_from_video(
                     image_format=mp.ImageFormat.SRGB, data=rgb_frame
                 )
 
-                results = landmarker.detect_for_video(mp_image, timestamp_ms)
+                results = landmarker.detect(mp_image)
 
                 if results.pose_landmarks and len(results.pose_landmarks) > 0:
                     detected_count += 1

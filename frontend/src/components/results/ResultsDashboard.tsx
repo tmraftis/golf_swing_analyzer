@@ -46,9 +46,9 @@ function ScoreRing({ score }: { score: number }) {
           className="text-forest-green"
         />
       </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
+      <div className="absolute inset-0 flex items-center justify-center">
         <span className="text-4xl font-bold tracking-tight">{score}</span>
-        <span className="text-xs text-cream/40 -mt-0.5">/ 100</span>
+        <span className="text-lg font-semibold text-cream/50 mt-1">%</span>
       </div>
     </div>
   );
@@ -66,10 +66,10 @@ export default function ResultsDashboard({ analysis }: ResultsDashboardProps) {
   const score = analysis.similarity_score ?? 0;
 
   return (
-    <div className="min-h-screen px-6 py-12">
-      <div className="mx-auto max-w-6xl space-y-10">
+    <div className="min-h-screen px-6 py-6">
+      <div className="mx-auto max-w-6xl space-y-6">
         {/* Hero header */}
-        <div className="relative overflow-hidden rounded-2xl border border-cream/8 bg-gradient-to-b from-cream/[0.04] to-transparent p-8 md:p-10">
+        <div className="relative overflow-hidden rounded-xl border border-cream/8 bg-gradient-to-b from-cream/[0.04] to-transparent p-6 md:p-8">
           {/* Subtle background glow */}
           <div className="pointer-events-none absolute -top-24 left-1/2 -translate-x-1/2 w-96 h-96 rounded-full bg-forest-green/8 blur-3xl" />
 
@@ -104,7 +104,7 @@ export default function ResultsDashboard({ analysis }: ResultsDashboardProps) {
             <div className="shrink-0">
               <button
                 onClick={() => setShareOpen(true)}
-                className="group flex items-center gap-2.5 rounded-xl border border-cream/10 bg-cream/5 px-5 py-3 text-sm font-medium transition-all hover:bg-cardinal-red hover:border-cardinal-red hover:text-cream"
+                className="group flex items-center gap-2.5 rounded-lg border border-cream/10 bg-cream/5 px-5 py-3 text-sm font-medium transition-all hover:bg-cardinal-red hover:border-cardinal-red hover:text-cream"
               >
                 <svg
                   className="w-4 h-4 text-cream/50 group-hover:text-cream transition-colors"
@@ -163,7 +163,7 @@ export default function ResultsDashboard({ analysis }: ResultsDashboardProps) {
 
         {/* Top 3 differences */}
         <div>
-          <h2 className="text-lg font-semibold mb-4">
+          <h2 className="text-sm font-semibold mb-3 text-cream/60 uppercase tracking-wide">
             Top Areas for Improvement
           </h2>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">

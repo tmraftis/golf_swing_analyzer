@@ -105,11 +105,11 @@ export default function SharedResultsClient({
     : null;
 
   return (
-    <div className="min-h-screen px-6 py-12">
-      <div className="mx-auto max-w-4xl space-y-10">
+    <div className="min-h-screen px-6 py-6">
+      <div className="mx-auto max-w-4xl space-y-6">
         {/* Header */}
         <div className="text-center">
-          <h1 className="text-3xl font-bold mb-2">Swing Analysis</h1>
+          <h1 className="text-2xl font-bold mb-2">Swing Analysis</h1>
           <p className="text-5xl font-bold text-forest-green mb-2">
             {data.similarity_score}%
           </p>
@@ -129,7 +129,7 @@ export default function SharedResultsClient({
             <button
               key={phase}
               onClick={() => setActivePhase(phase)}
-              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+              className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${
                 activePhase === phase
                   ? "bg-forest-green text-cream"
                   : "bg-cream/5 text-cream/50 hover:bg-cream/10"
@@ -143,7 +143,7 @@ export default function SharedResultsClient({
         {/* Side-by-side phase images */}
         {(userImgUrl || refImgUrl) && (
           <div className="grid grid-cols-2 gap-4">
-            <div className="relative rounded-xl overflow-hidden bg-cream/5 aspect-[3/4]">
+            <div className="relative rounded-lg overflow-hidden bg-cream/5 aspect-[3/4]">
               {userImgUrl ? (
                 <img
                   src={userImgUrl}
@@ -159,7 +159,7 @@ export default function SharedResultsClient({
                 User
               </span>
             </div>
-            <div className="relative rounded-xl overflow-hidden bg-cream/5 aspect-[3/4]">
+            <div className="relative rounded-lg overflow-hidden bg-cream/5 aspect-[3/4]">
               {refImgUrl ? (
                 <img
                   src={refImgUrl}
@@ -181,7 +181,7 @@ export default function SharedResultsClient({
         {/* Top differences */}
         {data.top_differences.length > 0 && (
           <div>
-            <h2 className="text-lg font-semibold mb-4">
+            <h2 className="text-sm font-semibold mb-3 text-cream/60 uppercase tracking-wide">
               Top Areas for Improvement
             </h2>
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -193,11 +193,11 @@ export default function SharedResultsClient({
         )}
 
         {/* CTA */}
-        <div className="rounded-2xl border border-forest-green/30 bg-forest-green/5 p-8 text-center">
-          <h3 className="text-xl font-bold mb-2">
+        <div className="rounded-xl border border-forest-green/30 bg-forest-green/5 p-6 text-center">
+          <h3 className="text-lg font-bold mb-2">
             Think you can beat this score?
           </h3>
-          <p className="text-cream/60 text-sm mb-6">
+          <p className="text-cream/60 text-sm mb-5">
             Upload your own swing and see how you compare to Tiger Woods.
           </p>
           <Link href="/">

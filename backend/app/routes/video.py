@@ -11,16 +11,9 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 
 from app.config import settings
+from app.paths import REFERENCE_DATA_DIR
 
 router = APIRouter()
-
-# Project root for reference data — check local dev (4 levels up) and Docker (3 levels up)
-_candidates = [
-    Path(__file__).parent.parent.parent.parent,  # local dev: backend/app/routes -> repo root
-    Path(__file__).parent.parent.parent,          # Docker: /app/app/routes -> /app
-]
-_PROJECT_ROOT = next((p for p in _candidates if (p / "reference_data").is_dir()), _candidates[0])
-_REFERENCE_DIR = _PROJECT_ROOT / "reference_data"
 
 
 def _stream_file(path: Path, start: int, end: int, chunk_size: int = 64 * 1024):
@@ -88,5 +81,5 @@ async def serve_upload(filename: str, request: Request):
 @router.get("/reference/{filepath:path}")
 async def serve_reference(filepath: str, request: Request):
     """Serve reference video files with range request support."""
-    file_path = _REFERENCE_DIR / filepath
+    file_path = REFERENCE_DATA_DIR / filepath
     return _serve_video(file_path, request)

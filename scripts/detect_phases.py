@@ -24,6 +24,39 @@ import sys
 import numpy as np
 
 
+# ─── Hysteresis helpers ───
+
+def _argmin_hysteresis(arr, epsilon=1e-4):
+    """Like np.argmin but with hysteresis: when multiple values are within
+    epsilon of the minimum, prefer the earliest index.
+
+    This makes tie-breaking deterministic even when tiny floating-point
+    differences (from GPU jitter) would otherwise flip the argmin result
+    between adjacent frames.
+    """
+    if len(arr) == 0:
+        return 0
+    min_val = float(np.nanmin(arr))
+    # Find all indices within epsilon of the minimum
+    candidates = np.where(np.abs(arr - min_val) <= epsilon)[0]
+    if len(candidates) == 0:
+        return int(np.nanargmin(arr))
+    return int(candidates[0])  # earliest frame wins
+
+
+def _argmax_hysteresis(arr, epsilon=1e-4):
+    """Like np.argmax but with hysteresis: when multiple values are within
+    epsilon of the maximum, prefer the earliest index.
+    """
+    if len(arr) == 0:
+        return 0
+    max_val = float(np.nanmax(arr))
+    candidates = np.where(np.abs(arr - max_val) <= epsilon)[0]
+    if len(candidates) == 0:
+        return int(np.nanargmax(arr))
+    return int(candidates[0])  # earliest frame wins
+
+
 # ─── Default algorithm parameters ───
 
 DEFAULT_PARAMS = {
@@ -275,7 +308,7 @@ def find_top_of_backswing(y_smooth, velocity, rough_address_y, fps, params,
             if len(search_region) <= 2:
                 continue
 
-            local_min_idx = int(np.argmin(search_region)) + search_start
+            local_min_idx = _argmin_hysteresis(search_region) + search_start
             top_prominence = rough_address_y - y_smooth[local_min_idx]
 
             if top_prominence <= prominence:
@@ -365,7 +398,7 @@ def find_top_of_backswing(y_smooth, velocity, rough_address_y, fps, params,
 
     # Last resort: global minimum
     if len(y_smooth) > 0:
-        gmin = int(np.argmin(y_smooth))
+        gmin = _argmin_hysteresis(y_smooth)
         diag["chosen"] = gmin
         diag["method"] = "global_min"
         return gmin, diag
@@ -431,7 +464,7 @@ def find_address(y_smooth, velocity, top_frame, params):
         # = most settled at ball level). This gives a more natural "address"
         # position rather than the very last still frame before takeaway.
         run_slice = y_smooth[last_run[0]:last_run[1] + 1]
-        address_frame = last_run[0] + int(np.argmax(run_slice))
+        address_frame = last_run[0] + _argmax_hysteresis(run_slice)
         diag["chosen_run"] = last_run
         diag["address_frame"] = address_frame
         return address_frame, diag
@@ -439,7 +472,7 @@ def find_address(y_smooth, velocity, top_frame, params):
     # Fallback: use the last run with the highest average Y (hands lowest)
     best_run = max(runs, key=lambda r: np.mean(y_smooth[r[0]:r[1] + 1]))
     run_slice = y_smooth[best_run[0]:best_run[1] + 1]
-    address_frame = best_run[0] + int(np.argmax(run_slice))
+    address_frame = best_run[0] + _argmax_hysteresis(run_slice)
     diag["fallback"] = True
     diag["chosen_run"] = best_run
     diag["address_frame"] = address_frame
@@ -496,9 +529,9 @@ def find_impact(y_smooth, velocity, top_frame, address_y, fps, params):
                     refine_end = min(settle_idx + 5, len(search_region))
                     refine_region = search_region[settle_idx:refine_end]
                     if len(refine_region) > 0:
-                        best_offset = int(np.argmin(
+                        best_offset = _argmin_hysteresis(
                             np.abs(refine_region - address_y)
-                        ))
+                        )
                         impact_frame = top_frame + settle_idx + best_offset
                     else:
                         impact_frame = top_frame + settle_idx
@@ -532,7 +565,7 @@ def find_impact(y_smooth, velocity, top_frame, address_y, fps, params):
         refine_end = min(first_crossing + 5, len(search_region))
         refine_region = search_region[first_crossing:refine_end]
         refine_dist = np.abs(refine_region - address_y)
-        best_offset = int(np.argmin(refine_dist))
+        best_offset = _argmin_hysteresis(refine_dist)
         best_idx = first_crossing + best_offset
         impact_frame = top_frame + int(best_idx)
         diag = {
@@ -545,7 +578,7 @@ def find_impact(y_smooth, velocity, top_frame, address_y, fps, params):
 
     # Last fallback: closest approach to address Y
     distance_to_address = np.abs(search_region - address_y)
-    best_idx = int(np.argmin(distance_to_address))
+    best_idx = _argmin_hysteresis(distance_to_address)
     impact_frame = top_frame + int(best_idx)
     diag = {
         "search_range": (top_frame, search_end),
@@ -634,7 +667,7 @@ def find_follow_through(y_smooth, velocity, impact_frame, top_frame, fps, params
         return ft_frame, diag
 
     # Last resort: global minimum in the search window
-    ft_idx = int(np.argmin(search_region))
+    ft_idx = _argmin_hysteresis(search_region)
     ft_frame = search_start + ft_idx
     diag["chosen"] = ft_frame
     diag["method"] = "global_min"
