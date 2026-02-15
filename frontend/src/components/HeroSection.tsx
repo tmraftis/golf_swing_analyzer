@@ -18,14 +18,13 @@ export default function HeroSection() {
           Compare your swing to Tiger Woods&apos; iconic 2000 form. See exactly
           where to improve with AI-powered analysis.
         </p>
-        {!loading && (
-          <Link
-            href={user ? "/upload" : "/api/auth/signup"}
-            className="inline-block bg-cardinal-red text-cream px-8 py-3 rounded-lg text-base font-semibold hover:bg-cardinal-red/90 transition-colors"
-          >
-            {user ? "Start Your Analysis" : "Get Started"}
-          </Link>
-        )}
+        <Link
+          href={loading ? "#" : user ? "/upload" : "/api/auth/signup"}
+          className="inline-block bg-cardinal-red text-cream px-8 py-3 rounded-lg text-base font-semibold hover:bg-cardinal-red/90 transition-colors"
+          aria-disabled={loading}
+        >
+          {loading ? "Get Started" : user ? "Start Your Analysis" : "Get Started"}
+        </Link>
       </div>
     </section>
   );

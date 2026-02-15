@@ -11,22 +11,35 @@ _WRAPAROUND_ANGLES = {"shoulder_line_angle", "hip_line_angle"}
 # Weights for ranking angle importance.
 # Higher weight = more significant when determining top faults.
 # Only includes angles that survive the _EXCLUDE_ANGLES_FROM_RANKING filter.
+#
+# PROJECTION-AWARE WEIGHTING:
+# Angles involving limbs that move toward/away from a single camera are
+# heavily distorted by 2D projection.  arm-torso angles can have 30-50°
+# of projection error in DTL view (arm moving along the camera axis).
+# Knee flex has 5-15° of projection error.  These are downweighted so
+# they don't dominate the top-3 over more reliable angles like spine
+# and elbow measurements.
 ANGLE_WEIGHTS = {
+    # ── Reliable angles (< 5° projection error) ──────────────────
     # Spine angle maintenance is the #1 DTL metric
     ("spine_angle_dtl", "impact"): 1.5,
     ("spine_angle_dtl", "top"): 1.3,
-    # Lead arm extension / backswing arc
-    ("lead_arm_torso", "top"): 1.5,
-    ("lead_arm_torso", "impact"): 1.2,
     # Spine tilt at impact (reverse spine angle = injury risk)
     ("spine_tilt_fo", "impact"): 1.3,
     # Elbow angles — key swing plane indicators
     ("right_elbow", "top"): 1.2,
     ("left_elbow", "impact"): 1.3,
-    # Knee flex — sway and power transfer indicators
-    ("right_knee_flex", "top"): 1.2,
-    ("right_knee_flex", "address"): 1.1,
-    ("left_knee_flex", "impact"): 1.1,
+    # ── Projection-sensitive angles (downweighted) ────────────────
+    # Arm-torso angles are fully excluded from ranking via _EXCLUDE_ANGLES_FROM_RANKING.
+    # Knee flex: 5-15° projection error
+    ("right_knee_flex", "address"): 0.7,
+    ("right_knee_flex", "top"): 0.7,
+    ("right_knee_flex", "impact"): 0.7,
+    ("right_knee_flex", "follow_through"): 0.7,
+    ("left_knee_flex", "address"): 0.7,
+    ("left_knee_flex", "top"): 0.7,
+    ("left_knee_flex", "impact"): 0.7,
+    ("left_knee_flex", "follow_through"): 0.7,
 }
 
 # Minimum absolute delta (degrees) to consider a difference significant.
@@ -34,12 +47,19 @@ ANGLE_WEIGHTS = {
 MIN_DELTA_DEGREES = 5
 
 # Angles to exclude from top-3 ranking entirely.
-# shoulder_line_angle / hip_line_angle measure 2D line tilt from horizontal,
-# NOT true 3D rotational turn. x_factor is derived from these two tilts.
-# These are misleading as top recommendations because golfers expect rotation
-# metrics but get line-angle artifacts. They still appear in the angle table
-# for informational purposes — just not in the ranked coaching feedback.
-_EXCLUDE_ANGLES_FROM_RANKING = {"shoulder_line_angle", "hip_line_angle", "x_factor"}
+# These still appear in the angle comparison table for informational purposes
+# — just not in the ranked coaching feedback or similarity rankings.
+#
+# shoulder_line_angle / hip_line_angle: measure 2D line tilt from horizontal,
+#   NOT true 3D rotational turn. x_factor is derived from these two tilts.
+#
+# lead_arm_torso / trail_arm_torso: 15-50°+ projection error in DTL view
+#   because the arm moves along the camera axis. A real 18° difference can
+#   show as 66° in 2D, producing misleading "limited backswing arc" coaching.
+_EXCLUDE_ANGLES_FROM_RANKING = {
+    "shoulder_line_angle", "hip_line_angle", "x_factor",
+    "lead_arm_torso", "trail_arm_torso",
+}
 
 
 def compute_deltas(user_angles: dict, ref_angles: dict) -> dict:
@@ -237,18 +257,33 @@ def compute_similarity_score(deltas: dict) -> int:
     """Compute an overall similarity percentage from angle deltas.
 
     For each angle/phase pair the per-angle score is:
-        max(0, 1 - |delta| / 45)
-    so 0° delta = 100 % similarity, 45°+ delta = 0 %.
+        max(0, 1 - |delta| / max_delta)
+    where max_delta is scaled by projection reliability:
+    - Reliable angles (spine, elbow, wrist): 45° → 0% similarity
+    - Projection-sensitive angles (arm-torso, knee): wider tolerance
+
+    The max_delta for projection-sensitive angles is widened rather than
+    weighting the score, so a 60° arm-torso delta (which may be only ~20°
+    in 3D) doesn't tank the overall score.
 
     The final score is the mean of all per-angle scores, as an integer 0-100.
     """
     scores: list[float] = []
 
-    for view_deltas in deltas.values():
-        for phase_deltas in view_deltas.values():
-            for delta in phase_deltas.values():
-                if isinstance(delta, (int, float)):
-                    scores.append(max(0.0, 1.0 - abs(delta) / 45.0))
+    for view, view_deltas in deltas.items():
+        for phase, phase_deltas in view_deltas.items():
+            for angle_name, delta in phase_deltas.items():
+                if not isinstance(delta, (int, float)):
+                    continue
+                # Widen the tolerance for projection-sensitive angles
+                # so their inflated 2D deltas don't tank the score
+                weight = ANGLE_WEIGHTS.get((angle_name, phase), 1.0)
+                if weight < 1.0:
+                    # e.g. 0.5 weight → max_delta = 45/0.5 = 90°
+                    max_delta = 45.0 / weight
+                else:
+                    max_delta = 45.0
+                scores.append(max(0.0, 1.0 - abs(delta) / max_delta))
 
     if not scores:
         return 0
