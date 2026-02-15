@@ -38,22 +38,25 @@ export default function Header() {
                 Sign Out
               </button>
             </>
-          ) : !loading ? (
+          ) : (
             <>
+              {!loading && (
+                <Link
+                  href="/api/auth/login"
+                  className="text-cream/70 hover:text-cream text-sm font-medium transition-colors"
+                >
+                  Sign In
+                </Link>
+              )}
               <Link
-                href="/api/auth/login"
-                className="text-cream/70 hover:text-cream text-sm font-medium transition-colors"
-              >
-                Sign In
-              </Link>
-              <Link
-                href="/api/auth/signup"
+                href={loading ? "#" : "/api/auth/signup"}
                 className="bg-cardinal-red text-cream px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-cardinal-red/90 transition-colors"
+                aria-disabled={loading}
               >
                 Get Started
               </Link>
             </>
-          ) : null}
+          )}
         </div>
       </div>
     </header>
