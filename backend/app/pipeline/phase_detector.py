@@ -3,28 +3,16 @@
 Catches SystemExit from the original script and converts to PipelineError.
 """
 
-import sys
-import os
 import logging
 import io
 from contextlib import redirect_stdout
 
+from app.paths import ensure_scripts_importable
 from .models import PhaseDetectionError
 
 logger = logging.getLogger(__name__)
 
-# Add scripts/ to path so we can import detect_phases.
-# Check multiple locations: local dev (3 levels up) and Docker (2 levels up).
-_pipeline_dir = os.path.dirname(__file__)
-_candidates = [
-    os.path.join(_pipeline_dir, "..", "..", "..", "scripts"),   # local dev
-    os.path.join(_pipeline_dir, "..", "..", "scripts"),         # Docker / Railway
-]
-for _candidate in _candidates:
-    _abs = os.path.abspath(_candidate)
-    if os.path.isdir(_abs) and _abs not in sys.path:
-        sys.path.insert(0, _abs)
-        break
+ensure_scripts_importable()
 
 from detect_phases import detect_phases as _detect_phases  # noqa: E402
 

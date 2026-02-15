@@ -5,6 +5,7 @@ import logging
 from functools import lru_cache
 from pathlib import Path
 
+from app.paths import PROJECT_ROOT, REFERENCE_DATA_DIR
 from .models import PipelineError
 
 logger = logging.getLogger(__name__)
@@ -18,14 +19,6 @@ SKELETON_JOINTS = [
     "left_knee", "right_knee",
     "left_ankle", "right_ankle",
 ]
-
-# Project root — check local dev (4 levels up) and Docker (3 levels up)
-_candidates = [
-    Path(__file__).parent.parent.parent.parent,  # local dev: backend/app/pipeline -> repo root
-    Path(__file__).parent.parent.parent,          # Docker: /app/app/pipeline -> /app
-]
-PROJECT_ROOT = next((p for p in _candidates if (p / "reference_data").is_dir()), _candidates[0])
-REFERENCE_DATA_DIR = PROJECT_ROOT / "reference_data"
 
 # Map from reference JSON angle names to calculate_angles.py output names.
 # The reference data was built with slightly different naming conventions.

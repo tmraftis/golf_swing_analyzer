@@ -385,11 +385,11 @@ def run_analysis(
         )
 
     # Reference video phase frame images (Tiger)
-    from .reference_data import PROJECT_ROOT
+    from app.paths import REFERENCE_DATA_DIR
     ref_phase_images = {}
     for view in views:
         ref_video = str(
-            PROJECT_ROOT / "reference_data" / swing_type
+            REFERENCE_DATA_DIR / swing_type
             / f"tiger_2000_{swing_type}_{view}.mov"
         )
         ref_phase_images[view] = _extract_ref_phase_frame_images(

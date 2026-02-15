@@ -1,15 +1,14 @@
 from pathlib import Path
 from pydantic_settings import BaseSettings
 
-# Project root (one level up from backend/)
-_PROJECT_ROOT = Path(__file__).parent.parent.parent
+from app.paths import SCRIPTS_DIR
 
 
 def _find_model_path() -> str:
     """Find the MediaPipe model, checking multiple locations."""
     candidates = [
-        _PROJECT_ROOT / "scripts" / "pose_landmarker_heavy.task",  # local dev
-        Path("/app/models/pose_landmarker_heavy.task"),  # Docker / Railway
+        SCRIPTS_DIR / "pose_landmarker_heavy.task",         # local dev
+        Path("/app/models/pose_landmarker_heavy.task"),      # Docker / Railway
     ]
     for p in candidates:
         if p.exists():
