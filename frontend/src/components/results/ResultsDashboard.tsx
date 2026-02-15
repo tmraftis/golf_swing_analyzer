@@ -46,9 +46,9 @@ function ScoreRing({ score }: { score: number }) {
           className="text-forest-green"
         />
       </svg>
-      <div className="absolute inset-0 flex flex-col items-center justify-center">
+      <div className="absolute inset-0 flex items-center justify-center">
         <span className="text-4xl font-bold tracking-tight">{score}</span>
-        <span className="text-xs text-cream/40 -mt-0.5">/ 100</span>
+        <span className="text-lg font-semibold text-cream/50 mt-1">%</span>
       </div>
     </div>
   );

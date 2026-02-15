@@ -4,7 +4,7 @@
 
 Compare your golf swing to Tiger Woods' iconic 2000 iron swing using computer vision. Choose a camera angle (down-the-line or face-on), upload a single video, and get back angle comparisons, top 3 faults, and drill recommendations — all in under 15 seconds with GPU acceleration.
 
-**Current status:** Phase 4 in progress. Upload a single video (DTL or FO), get AI-powered swing analysis with side-by-side video comparison against Tiger Woods, phase-by-phase navigation, angle comparison tables, and coaching feedback. Toggleable skeleton overlay tracks your body in real-time during video playback (frame-by-frame on user video, phase-only on Tiger). Phase frame images extracted server-side as JPEGs for instant phase switching with zero seek latency. GPU-accelerated landmark extraction via Modal runs on T4 GPUs. Server-side video compression (ffmpeg H.264 ~4Mbps) reduces storage by ~73% and speeds up video streaming. Authentication via PropelAuth with Google OAuth and Magic Link sign-in — live in both local dev and production (`swingpure.ai`). Phase detection uses preceding-address validation to prevent post-swing walking from being misidentified as the backswing. Angle comparison uses wraparound-aware deltas for atan2-based angles (shoulder/hip line), fixing incorrect 346° deltas that should be ~14°. V1 is iron-only; driver support is planned for a future release.
+**Current status:** Phase 4 in progress. Upload a single video (DTL or FO), get AI-powered swing analysis with side-by-side video comparison against Tiger Woods, phase-by-phase navigation, angle comparison tables, and coaching feedback. Toggleable skeleton overlay tracks your body in real-time during video playback (frame-by-frame on user video, phase-only on Tiger). Phase frame images extracted server-side as JPEGs for instant phase switching with zero seek latency. GPU-accelerated landmark extraction via Modal runs on T4 GPUs. Server-side video compression (ffmpeg H.264 ~4Mbps with VFR normalization) reduces storage by ~73% and speeds up video streaming. Authentication via PropelAuth with Google OAuth and Magic Link sign-in — live in both local dev and production (`swingpure.ai`). Phase detection uses preceding-address validation to prevent post-swing walking from being misidentified as the backswing. Angle comparison uses wraparound-aware deltas for atan2-based angles (shoulder/hip line), fixing incorrect 346° deltas that should be ~14°. Shareable 1080×1080 PNG image generated server-side with similarity score, top 3 similarities, and top 3 differences. Fully deterministic analysis pipeline: VFR-normalized compression, SHA-256 content-hash cross-upload deduplication, landmark caching with versioning, IMAGE mode for both extractors, landmark rounding, pinned model version, and hysteresis tie-breaking. V1 is iron-only; driver support is planned for a future release.
 
 ---
 
@@ -17,7 +17,8 @@ Compare your golf swing to Tiger Woods' iconic 2000 iron swing using computer vi
 4. **Detect phases** — Algorithm auto-detects address, top of backswing, impact, and follow-through from wrist trajectory
 5. **Calculate angles** — Golf-specific angles computed at each phase (shoulder turn, hip rotation, spine tilt, X-factor, wrist cock, knee flex, etc.)
 6. **Compare to Tiger** — User angles compared against Tiger Woods' 2000 iron reference data using weighted deltas
-7. **Get coaching feedback** — Top 3 areas for improvement with severity ratings, descriptions, and practice drills
+7. **Get coaching feedback** — Top 3 areas for improvement with severity ratings, descriptions, and practice drills; top 3 similarities highlighting what you do well
+8. **Share** — Generate a 1080×1080 shareable image with your similarity score, top similarities, and top differences
 
 ```
 Select view (DTL or FO) + Upload (.mov/.mp4 × 1)
@@ -38,8 +39,8 @@ POST /api/analyze/{upload_id}  (body: { view: "dtl" | "fo" })
     │
     ▼
 Response: user_angles, reference_angles, deltas,
-          top 3 differences with coaching tips,
-          video_urls, reference_video_urls,
+          similarity_score, top 3 differences with coaching tips,
+          top 3 similarities, video_urls, reference_video_urls,
           user_all_landmarks (frame-by-frame),
           phase_images (JPEG snapshots)
     │
@@ -74,10 +75,14 @@ golf_swing_analyzer/
 │   │   │   │   └── route.ts              # PropelAuth route handler (login/callback/logout)
 │   │   │   ├── upload/
 │   │   │   │   └── page.tsx               # Upload page (auth required)
-│   │   │   └── results/
-│   │   │       └── [uploadId]/
-│   │   │           ├── page.tsx           # Results page (auth required)
-│   │   │           └── ResultsPageClient.tsx # Client-side results fetcher
+│   │   │   ├── results/
+│   │   │   │   └── [uploadId]/
+│   │   │   │       ├── page.tsx           # Results page (auth required)
+│   │   │   │       └── ResultsPageClient.tsx # Client-side results fetcher
+│   │   │   └── shared/
+│   │   │       └── [shareToken]/
+│   │   │           ├── page.tsx           # Public shared results page
+│   │   │           └── SharedResultsClient.tsx # Client-side shared results
 │   │   ├── components/
 │   │   │   ├── Header.tsx                 # Nav bar: logo, auth state, sign in/out
 │   │   │   ├── Footer.tsx                 # Minimal footer
@@ -95,6 +100,7 @@ golf_swing_analyzer/
 │   │   │       ├── AngleComparisonTable.tsx # Angle comparison table (collapsible)
 │   │   │       ├── SkeletonOverlay.tsx    # Canvas overlay: frame-by-frame skeleton on video
 │   │   │       ├── DifferenceCard.tsx     # Coaching feedback card
+│   │   │       ├── ShareModal.tsx        # Share modal with link copy + image download
 │   │   │       ├── LoadingSkeleton.tsx    # Loading placeholder
 │   │   │       └── ErrorState.tsx         # Error display
 │   │   ├── lib/
@@ -116,10 +122,12 @@ golf_swing_analyzer/
 │   ├── main.py                            # App entry, CORS, lifespan, routers
 │   ├── app/
 │   │   ├── config.py                      # Settings (upload, pipeline, Modal, PropelAuth, compression)
+│   │   ├── paths.py                       # Shared path constants (PROJECT_ROOT, SCRIPTS_DIR, etc.)
 │   │   ├── auth.py                        # PropelAuth init + require_user dependency
 │   │   ├── routes/
 │   │   │   ├── upload.py                  # POST /api/upload (auth required)
 │   │   │   ├── analysis.py               # POST /api/analyze, GET /api/analysis (auth required)
+│   │   │   ├── share.py                   # POST/GET /api/share (share token + image generation)
 │   │   │   └── video.py                  # Video serving with HTTP range requests (public)
 │   │   ├── models/
 │   │   │   └── schemas.py                 # Pydantic models (upload + analysis)
@@ -127,8 +135,9 @@ golf_swing_analyzer/
 │   │   │   ├── __init__.py
 │   │   │   └── compress.py                # ffmpeg H.264 compression (orientation-aware)
 │   │   ├── storage/
-│   │   │   ├── local.py                   # Save files to local filesystem + compress
-│   │   │   └── analysis_store.py          # In-memory analysis result cache
+│   │   │   ├── local.py                   # Save files to local filesystem + compress + SHA-256 hash
+│   │   │   ├── analysis_store.py          # In-memory analysis result cache
+│   │   │   └── share_store.py             # SQLite-backed share token store
 │   │   └── pipeline/                      # Swing analysis pipeline
 │   │       ├── __init__.py                # run_analysis() orchestrator
 │   │       ├── models.py                  # Pipeline exception hierarchy
@@ -138,7 +147,15 @@ golf_swing_analyzer/
 │   │       ├── angle_calculator.py        # Angle calculation wrapper
 │   │       ├── reference_data.py          # Tiger reference data loader
 │   │       ├── comparison_engine.py       # Delta computation + weighted ranking
-│   │       └── feedback_engine.py         # Fault rules → coaching text
+│   │       ├── feedback_engine.py         # Fault rules → coaching text
+│   │       └── image_generator.py        # 1080×1080 shareable PNG (Pillow)
+│   ├── tests/                             # Pytest test suite (60 tests)
+│   │   ├── conftest.py                   # Shared fixtures
+│   │   ├── test_comparison_engine.py     # Delta computation, ranking, similarities
+│   │   ├── test_feedback_engine.py       # Coaching feedback generation
+│   │   ├── test_image_generator.py       # Share image generation
+│   │   ├── test_phase_detection.py       # Phase detection algorithms
+│   │   └── test_schemas.py              # Pydantic model validation
 │   ├── requirements.txt
 │   ├── Procfile                           # Railway start command
 │   └── .env.example
@@ -186,7 +203,7 @@ golf_swing_analyzer/
 
 ```bash
 curl -o scripts/pose_landmarker_heavy.task \
-  https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task
+  https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task
 ```
 
 ### 2. Set up Modal (optional, for GPU acceleration)
@@ -264,7 +281,7 @@ Set `NEXT_PUBLIC_API_URL=http://localhost:8000` in `frontend/.env.local` (alread
 | GPU worker | Modal (T4 GPU, parallel extraction) | Modal |
 | Pose estimation | MediaPipe Pose Landmarker (heavy, 33 landmarks) | Modal GPU or local CPU |
 | Analysis pipeline | Custom Python (landmark extraction, phase detection, angle math, comparison, feedback) | Backend |
-| Video compression | ffmpeg (H.264, ~4Mbps, orientation-aware) | Backend |
+| Video compression | ffmpeg (H.264, ~4Mbps, VFR-normalized, orientation-aware) | Backend |
 | Storage | Local filesystem (v1), cloud bucket planned | — |
 | Auth | PropelAuth (Google OAuth + Magic Link) | PropelAuth hosted |
 
@@ -371,6 +388,21 @@ Run the analysis pipeline on a previously uploaded video. Processing takes ~5-10
     { "rank": 2, "..." : "..." },
     { "rank": 3, "..." : "..." }
   ],
+  "top_similarities": [
+    {
+      "rank": 1,
+      "angle_name": "right_knee_flex",
+      "phase": "address",
+      "view": "dtl",
+      "user_value": 165.2,
+      "reference_value": 165.8,
+      "delta": -0.6,
+      "title": "Right Knee Flex at Address"
+    },
+    { "rank": 2, "..." : "..." },
+    { "rank": 3, "..." : "..." }
+  ],
+  "similarity_score": 83,
   "phase_frames": {
     "dtl": { "address": 0, "top": 7, "impact": 11, "follow_through": 18 }
   }
@@ -387,6 +419,32 @@ Retrieve a previously computed analysis result from cache. Requires `Authorizati
 
 **Errors:** `401` for missing/invalid auth token, `404` if not yet analyzed.
 
+### `POST /api/share/{upload_id}` *(auth required)*
+
+Create a shareable link for an analysis result. Returns a short share token and a 1080×1080 PNG image.
+
+**Request body:**
+```json
+{ "view": "dtl" }
+```
+
+**Success (200):**
+```json
+{
+  "share_token": "abc123",
+  "share_url": "https://swingpure.ai/shared/abc123",
+  "image_url": "/api/share/abc123/image"
+}
+```
+
+### `GET /api/share/{share_token}` *(public)*
+
+Retrieve a shared analysis result by token. Returns the analysis data for public viewing.
+
+### `GET /api/share/{share_token}/image` *(public)*
+
+Download the 1080×1080 shareable PNG image for a shared analysis.
+
 ---
 
 ## Analysis Pipeline
@@ -395,12 +453,13 @@ The pipeline runs as a sequence of steps, each with error handling and logging:
 
 | Step | Module | What it does | Time (Modal) | Time (local) |
 |------|--------|-------------|:---:|:---:|
-| 1 | `modal_extractor.py` / `landmark_extractor.py` | MediaPipe pose extraction (single video on GPU or CPU) | ~3-5s (warm) | ~15-25s |
-| 2 | `phase_detector.py` | Auto-detect address, top, impact, follow-through | ~0.5s | ~0.5s |
+| 1 | `modal_extractor.py` / `landmark_extractor.py` | MediaPipe pose extraction (single video on GPU or CPU); cached per upload with cross-upload hash dedup | ~3-5s (warm) | ~15-25s |
+| 1b | `__init__.py` | Round landmarks to 4 decimal places + save cache | ~0.1s | ~0.1s |
+| 2 | `phase_detector.py` | Auto-detect address, top, impact, follow-through (hysteresis tie-breaking) | ~0.5s | ~0.5s |
 | 3 | `angle_calculator.py` | Compute golf-specific angles at each phase | ~0.5s | ~0.5s |
 | 4 | `reference_data.py` | Load Tiger Woods reference (cached with `lru_cache`) | instant | instant |
-| 5 | `comparison_engine.py` | Compute deltas, apply weights, rank by significance | ~0.1s | ~0.1s |
-| 6 | `feedback_engine.py` | Match fault rules, generate coaching text | ~0.1s | ~0.1s |
+| 5 | `comparison_engine.py` | Compute deltas, apply weights, rank differences + similarities | ~0.1s | ~0.1s |
+| 6 | `feedback_engine.py` | Match fault rules, generate coaching text + similarity titles | ~0.1s | ~0.1s |
 
 ### Comparison Engine
 
@@ -423,6 +482,8 @@ Differences are ranked using **weighted absolute deltas**. Biomechanically impor
 **Excluded from ranking:** `shoulder_line_angle`, `hip_line_angle`, and `x_factor` are excluded from the top-3 recommendations. These measure 2D line tilt from horizontal, not true 3D rotation, and produce misleading coaching advice. They still appear in the angle comparison table for informational purposes.
 
 The top 3 differences are selected with **view balance** — when both views are analyzed, no more than 2 from the same camera angle; when a single view is analyzed, all 3 can come from that view.
+
+**Similarities** are ranked using the same view-balanced approach but sorted by smallest absolute delta — angles where the user most closely matches Tiger. The top 3 similarities are displayed in the share image alongside the top 3 differences.
 
 ### Feedback Engine
 
@@ -535,9 +596,15 @@ python scripts/build_reference_json.py
 - **Modal GPU acceleration** — landmark extraction offloaded to Modal T4 GPUs. Single-view extraction uses `.remote()` for synchronous processing (~3-5s); dual-view (if both requested) uses `.spawn()` / `.get()` for parallel processing (~5-8s). Uses `RunningMode.IMAGE` for deterministic per-frame detection (VIDEO mode was non-deterministic due to temporal tracking state). Automatic retry on low detection rate with a relaxed threshold. Automatic fallback to local CPU if Modal is unavailable.
 - **Video downscaling for inference** — frames downscaled to 960px height before MediaPipe inference on Modal; normalized landmark coordinates remain resolution-independent, with pixel positions mapped back to original dimensions
 - **Lazy Modal import** — `modal` package only imported when `USE_MODAL=true`, so the backend works without Modal installed when running locally
-- **Server-side video compression** — uploaded videos (typically iPhone HEVC .MOV, ~15Mbps, ~35MB each) are compressed to H.264 1080p ~4Mbps via ffmpeg after upload, reducing storage by ~73% (~35MB → ~8MB per file). Orientation-aware scale filter preserves portrait (1080×1920) and landscape (1920×1080) dimensions. `+faststart` moves moov atom for HTTP streaming. Graceful fallback: skips compression if ffmpeg is missing or compression fails. Controllable via `COMPRESS_UPLOADS=false` env var
+- **Server-side video compression** — uploaded videos (typically iPhone HEVC .MOV, ~15Mbps, ~35MB each) are compressed to H.264 1080p ~4Mbps via ffmpeg after upload, reducing storage by ~73% (~35MB → ~8MB per file). Uses `-vsync vfr` to normalize Variable Frame Rate timing metadata without dropping or duplicating frames — this prevents iPhone VFR videos from producing different frame counts on re-encoding. Orientation-aware scale filter preserves portrait (1080×1920) and landscape (1920×1080) dimensions. `+faststart` moves moov atom for HTTP streaming. Graceful fallback: skips compression if ffmpeg is missing or compression fails. Controllable via `COMPRESS_UPLOADS=false` env var
 - **Skeleton overlay via canvas** — toggleable pose skeleton drawn on an HTML5 `<canvas>` absolutely positioned over each video using `pointer-events-none`. Landmarks (normalized 0-1 coords) are mapped to pixel positions accounting for `object-contain` letterboxing/pillarboxing via `getVideoRenderRect()`. `ResizeObserver` redraws on container resize. User video has frame-by-frame skeleton tracking during playback via `requestAnimationFrame` loop with binary search for nearest landmark frame by timestamp (~60fps). Tiger video shows skeleton at phase frames only (reference data has 4 phase landmarks, not per-frame). Backend includes both phase landmarks and all-frame landmarks in the `AnalysisResponse` — compact keys (`t`, `lm`) keep payload to ~10-20KB
 - **Phase frame image extraction** — server-side JPEG snapshots extracted at each of the 4 phase frames (address, top, impact, follow-through) for both user and reference videos using cv2. Images are preloaded on the frontend via `new Image()` and displayed as `<img>` overlays when paused, eliminating the 50-300ms video seeking latency when switching phases. 8 images per analysis (4 phases × 2 videos), ~85% JPEG quality
+- **Shareable image generation** — 1080×1080 PNG rendered at 2× (2160×2160 canvas) with Lanczos downscaling for sharp text. 3-column layout: similarity score (percentage in a ring), top 3 similarities (green cards), and top 3 differences (red cards). Generated server-side with Pillow. Supersampled ring at 4× internal scale. Pixel-aware title truncation using `textbbox()` to measure rendered width
+- **Share via token** — `POST /api/share/{upload_id}` creates a short token stored in SQLite, enabling public access to analysis results without authentication. Share URL and image URL returned for social sharing. Frontend ShareModal provides one-click link copy and image download
+- **Deterministic analysis pipeline** — seven layers of determinism protection: (1) VFR normalization — ffmpeg `-vsync vfr` ensures iPhone VFR videos produce consistent frame counts across re-encodes; (2) SHA-256 content hashing — raw video bytes hashed before compression, enabling cross-upload deduplication (re-uploading the same video reuses identical landmarks from the first upload); (3) landmark caching with versioning — extracted landmarks saved as JSON with `_cache_version` stamp, reused on re-analysis, stale caches auto-rejected; (4) IMAGE mode for local extractor — matches Modal worker, each frame processed independently with no temporal state; (5) landmark rounding — coordinates rounded to 4 decimal places after extraction to absorb GPU floating-point jitter; (6) pinned model URL — Modal image downloads versioned model (`/float16/1/`) instead of `/latest/`; (7) hysteresis tie-breaking — `_argmin_hysteresis()` / `_argmax_hysteresis()` prefer earliest frame when values within epsilon, preventing phase frame flipping from tiny coordinate differences
+- **Top 3 similarities** — `rank_similarities()` in comparison engine finds angles with smallest absolute deltas (closest match to Tiger), using the same view-balanced selection as differences (max 2 from same view). Displayed in share image and available in API response
+- **Pytest test suite** — 60 tests covering comparison engine, feedback engine, image generator, phase detection, and schemas. Run with `cd backend && PYTHONPATH=. pytest tests/`
+- **Shared paths module** — `app/paths.py` provides `PROJECT_ROOT`, `SCRIPTS_DIR`, `REFERENCE_DATA_DIR`, and `ensure_scripts_importable()` as a single source of truth, eliminating duplicated `sys.path` manipulation across pipeline modules
 
 ---
 
@@ -625,6 +692,7 @@ python scripts/build_reference_json.py
   - Google OAuth and Magic Link sign-in verified in production
 - **Server-side video compression:**
   - ffmpeg H.264 compression at ~4Mbps reduces iPhone uploads from ~35MB to ~8MB (~73% reduction)
+  - `-vsync vfr` normalizes Variable Frame Rate timing metadata, preventing non-deterministic frame counts
   - Orientation-aware scale filter preserves portrait (1080×1920) and landscape (1920×1080) dimensions
   - `+faststart` moov atom for HTTP streaming compatibility
   - Graceful fallback: skips compression if ffmpeg is unavailable or compression fails
@@ -665,6 +733,29 @@ python scripts/build_reference_json.py
   - Custom favicon: white golfer silhouette on transparent background (multi-size ICO: 16, 32, 48px)
   - Tab title: "Swing Pure"
   - Driver card "Soon" badge positioned consistently with Iron checkmark, mobile-friendly
+  - Similarity score displayed as percentage (e.g., "83%") on results page and share image
+  - Consistent padding and styling across all pages
+- **Shareable results:**
+  - Share modal with one-click link copy and downloadable 1080×1080 PNG image
+  - Share image: 3-column layout with similarity score ring (percentage), top 3 similarities (green cards), top 3 differences (red cards), footer with "Swing pure" branding
+  - Public `/shared/[shareToken]` page for viewing shared results without authentication
+  - SQLite-backed share token store
+  - Top 3 similarities engine (`rank_similarities()`) — inverse of `rank_differences()`, finds angles with smallest absolute deltas
+- **Deterministic pipeline (7 layers):**
+  - VFR normalization: ffmpeg `-vsync vfr` ensures consistent frame counts from iPhone VFR videos
+  - SHA-256 content hashing: raw video bytes hashed before compression for cross-upload deduplication
+  - Landmark caching with versioning: JSON saved alongside video with `_cache_version` stamp; stale caches auto-rejected on version bump
+  - Cross-upload landmark reuse: re-uploading the same video finds matching hash from previous upload and copies landmarks
+  - Local extractor switched from VIDEO to IMAGE mode (matching Modal worker)
+  - Landmark rounding to 4 decimal places absorbs GPU floating-point jitter
+  - Modal model URL pinned to versioned path (`/float16/1/`) instead of `/latest/`
+  - Hysteresis tie-breaking in phase detection (`_argmin_hysteresis()` / `_argmax_hysteresis()`)
+- **Testing:**
+  - Pytest test suite with 60 tests covering comparison engine, feedback engine, image generator, phase detection, and schemas
+  - Pre-commit hook for running tests
+- **Code quality:**
+  - Extracted shared `app/paths.py` module (single source of truth for project paths)
+  - Eliminated duplicated `sys.path` manipulation across pipeline modules
 
 ### Phase 4 remaining
 
@@ -720,7 +811,7 @@ The comparison engine now uses wraparound-aware angular difference `(d + 180) % 
 
 ### ~~Issue 7: IMAGE Mode Produces Noisier Velocity Signal~~ (FIXED)
 
-Modal switched to `RunningMode.IMAGE` for deterministic extraction. Noisier velocity signal fixed with adaptive still_threshold, time-based minimum stillness, Y-minimum follow-through detection, and impact refinement.
+Both Modal and local extractors now use `RunningMode.IMAGE` for deterministic extraction. Noisier velocity signal fixed with adaptive still_threshold, time-based minimum stillness, Y-minimum follow-through detection, and impact refinement. Additional determinism layers: VFR normalization (`-vsync vfr` in ffmpeg), SHA-256 content-hash cross-upload deduplication, landmark caching with versioning, landmark rounding (4 decimal places), pinned model version, and hysteresis tie-breaking in phase detection.
 
 ### Remaining Fix Priority
 

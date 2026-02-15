@@ -23,7 +23,7 @@ image = (
     .run_commands(
         "mkdir -p /models",
         "wget -O /models/pose_landmarker_heavy.task "
-        "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/latest/pose_landmarker_heavy.task",
+        "https://storage.googleapis.com/mediapipe-models/pose_landmarker/pose_landmarker_heavy/float16/1/pose_landmarker_heavy.task",
     )
 )
 

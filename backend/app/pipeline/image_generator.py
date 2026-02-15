@@ -555,12 +555,12 @@ def generate(
     # ── FOOTER ───────────────────────────────────────────
     draw.line([(32 * S, y + S), (W - 32 * S, y + S)], fill=CREAM20, width=max(1, S // 2))
 
-    # "Swing" in yellow + "pure." in cream
+    # "Swing" in yellow + "pure" in cream
     footer_y = y + (FOOTER_H - 13 * S) // 2
     f_footer = _f(13 * S, bold=True)
     draw.text((32 * S, footer_y), "Swing", fill=YELLOW, font=f_footer)
     swing_bb_f = draw.textbbox((32 * S, footer_y), "Swing", font=f_footer)
-    draw.text((swing_bb_f[2] + 5 * S, footer_y), "pure.", fill=CREAM45, font=f_footer)
+    draw.text((swing_bb_f[2] + 5 * S, footer_y), "pure", fill=CREAM45, font=f_footer)
     _right(draw, "swingpure.ai", y + (FOOTER_H - 12 * S) // 2, _f(12 * S), CREAM45)
 
     # Small logo watermark near the right text
