@@ -5,6 +5,7 @@ import { useDropzone } from "react-dropzone";
 import type { VideoAngle, VideoFile } from "@/types";
 import { ACCEPTED_EXTENSIONS } from "@/lib/constants";
 import { validateVideoFile, getVideoDuration, validateDuration } from "@/lib/validation";
+import { trackVideoDropped } from "@/lib/analytics";
 
 interface VideoDropZoneProps {
   angle: VideoAngle;
@@ -31,6 +32,14 @@ export default function VideoDropZone({
       // Validate file type and size
       const fileError = validateVideoFile(f);
       if (fileError) {
+        trackVideoDropped({
+          file_size_bytes: f.size,
+          file_type: f.type,
+          duration_seconds: null,
+          view: angle as "dtl" | "fo",
+          valid: false,
+          error: fileError,
+        });
         onFileValidated({ file: f, angle, validated: false, error: fileError });
         return;
       }
@@ -40,6 +49,14 @@ export default function VideoDropZone({
         const duration = await getVideoDuration(f);
         const durationError = validateDuration(duration);
         if (durationError) {
+          trackVideoDropped({
+            file_size_bytes: f.size,
+            file_type: f.type,
+            duration_seconds: duration,
+            view: angle as "dtl" | "fo",
+            valid: false,
+            error: durationError,
+          });
           onFileValidated({
             file: f,
             angle,
@@ -49,9 +66,23 @@ export default function VideoDropZone({
           });
           return;
         }
+        trackVideoDropped({
+          file_size_bytes: f.size,
+          file_type: f.type,
+          duration_seconds: duration,
+          view: angle as "dtl" | "fo",
+          valid: true,
+        });
         onFileValidated({ file: f, angle, duration, validated: true });
       } catch {
         // If we can't read metadata, allow upload — backend can re-validate
+        trackVideoDropped({
+          file_size_bytes: f.size,
+          file_type: f.type,
+          duration_seconds: null,
+          view: angle as "dtl" | "fo",
+          valid: true,
+        });
         onFileValidated({
           file: f,
           angle,

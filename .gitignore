@@ -42,6 +42,13 @@ frontend/node_modules/
 frontend/.next/
 frontend/.env.local
 
+# Playwright
+frontend/e2e/.auth/
+frontend/e2e/test-results/
+frontend/e2e/playwright-report/
+frontend/playwright-report/
+frontend/test-results/
+
 # Backend
 backend/uploads/
 backend/.env

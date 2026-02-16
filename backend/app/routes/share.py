@@ -7,6 +7,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 
+from app.analytics import track_share_created, track_share_viewed
 from app.auth import require_user
 from app.config import settings
 from app.models.schemas import ShareRequest, ShareResponse
@@ -63,6 +64,13 @@ async def create_share_token(
         expires_days=90,  # Free tier default
     )
 
+    track_share_created(
+        user_id=user_id or "unknown",
+        upload_id=request.upload_id,
+        share_token=token,
+        view=request.view,
+    )
+
     return ShareResponse(
         share_token=token,
         share_url=f"{settings.public_base_url}/shared/{token}",
@@ -82,6 +90,12 @@ async def get_shared_analysis(share_token: str):
             404,
             "This swing analysis has expired or been made private.",
         )
+
+    track_share_viewed(
+        share_token=share_token,
+        upload_id=share["upload_id"],
+        view=share["view"],
+    )
 
     # Look up the cached analysis
     cache_key = f"{share['upload_id']}_{share['view']}"

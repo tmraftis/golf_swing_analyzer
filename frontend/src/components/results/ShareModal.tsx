@@ -6,6 +6,11 @@ import { createShare, getShareImageUrl } from "@/lib/api";
 import { API_URL } from "@/lib/constants";
 import type { ShareResponse, VideoAngle } from "@/types";
 import Button from "@/components/Button";
+import {
+  trackShareLinkCopied,
+  trackShareImageDownloaded,
+  trackSocialShareClicked,
+} from "@/lib/analytics";
 
 interface ShareModalProps {
   uploadId: string;
@@ -69,6 +74,7 @@ export default function ShareModal({
 
   const handleCopyLink = useCallback(async () => {
     if (!share) return;
+    trackShareLinkCopied({ upload_id: uploadId, share_token: share.share_token });
     try {
       await navigator.clipboard.writeText(share.share_url);
       setCopied(true);
@@ -84,10 +90,11 @@ export default function ShareModal({
       setCopied(true);
       setTimeout(() => setCopied(false), 2500);
     }
-  }, [share]);
+  }, [share, uploadId]);
 
   const handleDownloadImage = useCallback(async () => {
     if (!share) return;
+    trackShareImageDownloaded({ upload_id: uploadId, share_token: share.share_token });
     setDownloading(true);
     try {
       const url = getShareImageUrl(share.share_token);
@@ -105,7 +112,7 @@ export default function ShareModal({
     } finally {
       setDownloading(false);
     }
-  }, [share]);
+  }, [share, uploadId]);
 
   const shareUrl = share?.share_url ?? "";
 
@@ -210,6 +217,7 @@ export default function ShareModal({
                 href={twitterUrl}
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={() => share && trackSocialShareClicked({ platform: "twitter", upload_id: uploadId, share_token: share.share_token })}
                 className="flex-1 flex items-center justify-center gap-2 rounded-lg border border-cream/10 bg-cream/5 py-3 text-sm font-medium hover:bg-cream/10 transition-colors"
               >
                 <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
@@ -221,6 +229,7 @@ export default function ShareModal({
                 href={facebookUrl}
                 target="_blank"
                 rel="noopener noreferrer"
+                onClick={() => share && trackSocialShareClicked({ platform: "facebook", upload_id: uploadId, share_token: share.share_token })}
                 className="flex-1 flex items-center justify-center gap-2 rounded-lg border border-cream/10 bg-cream/5 py-3 text-sm font-medium hover:bg-cream/10 transition-colors"
               >
                 <svg className="w-4 h-4" viewBox="0 0 24 24" fill="currentColor">
