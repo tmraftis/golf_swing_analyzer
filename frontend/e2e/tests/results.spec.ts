@@ -12,12 +12,8 @@ import {
 } from "../fixtures/mock-data";
 
 test.describe("Results Page — dev (mocked)", () => {
-  test.skip(
-    ({ }, testInfo) => testInfo.project.name === "prod",
-    "Mocked tests only run in dev"
-  );
-
-  test.beforeEach(async ({ authedPage }) => {
+  test.beforeEach(async ({ authedPage }, testInfo) => {
+    test.skip(testInfo.project.name === "prod", "Mocked tests only run in dev");
     // Mock the analysis GET endpoint
     await authedPage.route("**/api/analysis/**", (route) => {
       if (route.request().method() === "GET") {
@@ -107,14 +103,12 @@ test.describe("Results Page — dev (mocked)", () => {
 });
 
 test.describe("Results Page — prod (smoke)", () => {
-  test.skip(
-    ({ }, testInfo) => testInfo.project.name !== "prod",
-    "Prod smoke tests only run in prod project"
-  );
-
   const prodUploadId = process.env.E2E_PROD_UPLOAD_ID;
 
-  test.skip(!prodUploadId, "E2E_PROD_UPLOAD_ID not set — skipping");
+  test.beforeEach(({}, testInfo) => {
+    test.skip(testInfo.project.name !== "prod", "Prod smoke tests only run in prod project");
+    test.skip(!prodUploadId, "E2E_PROD_UPLOAD_ID not set — skipping");
+  });
 
   test("loads results page with real data", async ({ authedPage }) => {
     const results = new ResultsPage(authedPage);

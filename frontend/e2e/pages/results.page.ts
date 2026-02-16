@@ -1,4 +1,5 @@
 import { type Page, type Locator } from "@playwright/test";
+import { gotoWithRetry } from "../fixtures/helpers";
 
 /**
  * Page object for the Results page (/results/[uploadId]).
@@ -51,7 +52,7 @@ export class ResultsPage {
     this.phaseTop = page.locator('button:has-text("Top")').first();
     this.phaseImpact = page.locator('button:has-text("Impact")').first();
     this.phaseFollowThrough = page.locator(
-      'button:has-text("Follow Through")'
+      'button:has-text("Follow-Through")'
     ).first();
 
     // Differences
@@ -65,8 +66,11 @@ export class ResultsPage {
   }
 
   async goto(uploadId: string, view = "dtl") {
-    await this.page.goto(`/results/${uploadId}?view=${view}`);
-    await this.heading.waitFor({ timeout: 15_000 });
+    await gotoWithRetry(
+      this.page,
+      `/results/${uploadId}?view=${view}`,
+      this.heading
+    );
   }
 
   /** Click a phase tab */

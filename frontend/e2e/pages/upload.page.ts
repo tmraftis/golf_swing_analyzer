@@ -1,5 +1,6 @@
 import { type Page, type Locator } from "@playwright/test";
 import path from "path";
+import { gotoWithRetry } from "../fixtures/helpers";
 
 /**
  * Page object for the Upload page (/upload).
@@ -64,8 +65,7 @@ export class UploadPage {
   }
 
   async goto() {
-    await this.page.goto("/upload");
-    await this.heading.waitFor({ timeout: 15_000 });
+    await gotoWithRetry(this.page, "/upload", this.heading);
   }
 
   /** Upload a video file via the hidden input */

@@ -32,8 +32,12 @@ test.describe("Home Page — unauthenticated", () => {
     const home = new HomePage(unauthPage);
     await home.goto();
 
-    const href = await home.ctaGetStarted.getAttribute("href");
-    expect(href).toContain("/api/auth/signup");
+    // Wait for PropelAuth loading state to resolve — href starts as "#"
+    await expect(home.ctaGetStarted).toHaveAttribute(
+      "href",
+      /\/api\/auth\/signup/,
+      { timeout: 10_000 }
+    );
   });
 
   test("How it works section is visible", async ({ unauthPage }) => {

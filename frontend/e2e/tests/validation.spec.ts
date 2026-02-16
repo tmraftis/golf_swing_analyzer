@@ -11,10 +11,9 @@ import { UploadPage } from "../pages/upload.page";
 import path from "path";
 
 test.describe("Upload Validation", () => {
-  test.skip(
-    ({ }, testInfo) => testInfo.project.name === "prod",
-    "Validation tests only run in dev"
-  );
+  test.beforeEach(({}, testInfo) => {
+    test.skip(testInfo.project.name === "prod", "Validation tests only run in dev");
+  });
 
   test("submit button is disabled without a video", async ({ authedPage }) => {
     const upload = new UploadPage(authedPage);

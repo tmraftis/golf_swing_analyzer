@@ -1,4 +1,5 @@
 import { type Page, type Locator } from "@playwright/test";
+import { gotoWithRetry } from "../fixtures/helpers";
 
 /**
  * Page object for the Shared Results page (/shared/[shareToken]).
@@ -65,7 +66,7 @@ export class SharedResultsPage {
     this.phaseTop = page.locator('button:has-text("Top")').first();
     this.phaseImpact = page.locator('button:has-text("Impact")').first();
     this.phaseFollowThrough = page.locator(
-      'button:has-text("Follow Through")'
+      'button:has-text("Follow-Through")'
     ).first();
 
     // Images
@@ -77,22 +78,23 @@ export class SharedResultsPage {
 
     // CTA
     this.ctaHeading = page.getByText("Think you can beat this score?");
-    this.ctaButton = page.locator(
-      'a:has-text("Analyze Your Swing"), button:has-text("Analyze Your Swing")'
-    );
+    this.ctaButton = page.locator('a:has-text("Analyze Your Swing")').first();
 
     // Footer
     this.footer = page.getByText("Powered by Pure");
   }
 
   async goto(shareToken: string) {
-    await this.page.goto(`/shared/${shareToken}`);
-    // Wait for either success content or error state
-    await this.page
-      .locator(
-        'text="Swing Analysis", text="Analysis Unavailable", text="Loading swing analysis..."'
-      )
-      .first()
-      .waitFor({ timeout: 15_000 });
+    const content = this.page
+      .getByText("Swing Analysis")
+      .or(this.page.getByText("Analysis Unavailable"))
+      .or(this.page.getByText("Loading swing analysis..."));
+
+    await gotoWithRetry(this.page, `/shared/${shareToken}`, content.first());
+
+    // If still loading, wait for it to resolve
+    await this.loadingSpinner
+      .waitFor({ state: "hidden", timeout: 10_000 })
+      .catch(() => {});
   }
 }

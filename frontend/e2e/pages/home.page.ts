@@ -1,4 +1,5 @@
 import { type Page, type Locator } from "@playwright/test";
+import { gotoWithRetry } from "../fixtures/helpers";
 
 /**
  * Page object for the Home page (/).
@@ -25,12 +26,16 @@ export class HomePage {
   constructor(page: Page) {
     this.page = page;
 
-    // Hero
+    // Hero — scope CTAs to the hero section so we don't pick up header links
     this.heading = page.locator("h1");
-    this.ctaGetStarted = page.locator('a:has-text("Get Started")').first();
-    this.ctaStartAnalysis = page.locator(
-      'a:has-text("Start Your Analysis"), button:has-text("Start Your Analysis")'
-    );
+    this.ctaGetStarted = page
+      .locator("section")
+      .filter({ has: page.locator("h1") })
+      .locator('a:has-text("Get Started")');
+    this.ctaStartAnalysis = page
+      .locator("section")
+      .filter({ has: page.locator("h1") })
+      .locator('a:has-text("Start Your Analysis")');
 
     // Header
     this.logo = page.locator('a[href="/"]').first();
@@ -47,7 +52,6 @@ export class HomePage {
   }
 
   async goto() {
-    await this.page.goto("/");
-    await this.page.waitForLoadState("networkidle");
+    await gotoWithRetry(this.page, "/", this.heading);
   }
 }

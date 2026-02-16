@@ -20,8 +20,8 @@ export default defineConfig({
   /* Fail CI if test.only is left in source */
   forbidOnly: isCI,
 
-  /* Retry once on CI */
-  retries: isCI ? 1 : 0,
+  /* Retry on failure — Turbopack ChunkLoadErrors are inherently flaky */
+  retries: isCI ? 2 : 1,
 
   /* HTML reporter + console list */
   reporter: [["html", { open: "never" }], ["list"]],

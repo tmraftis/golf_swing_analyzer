@@ -14,10 +14,9 @@ import {
 } from "../fixtures/mock-data";
 
 test.describe("Upload Flow — dev (mocked)", () => {
-  test.skip(
-    ({ }, testInfo) => testInfo.project.name === "prod",
-    "Upload tests only run in dev"
-  );
+  test.beforeEach(({}, testInfo) => {
+    test.skip(testInfo.project.name === "prod", "Upload tests only run in dev");
+  });
 
   test("full upload → analysis → results flow", async ({ authedPage }) => {
     test.setTimeout(60_000); // Allow extra time for the full flow
