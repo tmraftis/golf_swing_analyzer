@@ -119,6 +119,7 @@ golf_swing_analyzer/
 │   │   ├── global-setup.ts               # PropelAuth login → save storage state
 │   │   ├── fixtures/
 │   │   │   ├── auth.ts                    # Custom test fixtures (authedPage / unauthPage)
+│   │   │   ├── helpers.ts                # Shared helpers (gotoWithRetry for ChunkLoadError)
 │   │   │   ├── mock-data.ts              # Mock API response factories
 │   │   │   ├── test-video.mp4            # 3s synthetic test video
 │   │   │   └── test-invalid.txt          # Invalid file for validation tests
@@ -934,8 +935,9 @@ npm run test:e2e:report
 
 - **Two projects:** `dev` (full suite, mocked APIs, localhost) and `prod` (smoke tests only)
 - **Page objects:** `e2e/pages/` — encapsulate selectors for each page
-- **Auth:** PropelAuth storage state via `global-setup.ts` — log in once, reuse across all tests
-- **API mocking:** `page.route()` intercepts for dev tests with predictable mock data
+- **Auth:** PropelAuth storage state via `global-setup.ts` — log in once, reuse across all tests; tests gracefully skip when credentials are unavailable
+- **API mocking:** `page.route()` intercepts for dev tests with predictable mock data (scoped to `localhost:8000` to avoid intercepting Next.js internal routes)
+- **Retry on ChunkLoadError:** `gotoWithRetry()` helper retries page loads up to 2 times to handle transient Next.js Turbopack dev server failures; Playwright config retries failed tests once locally and twice on CI
 - **Sequential execution:** Single worker to avoid auth state conflicts
 
 ---
