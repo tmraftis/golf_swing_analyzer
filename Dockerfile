@@ -34,6 +34,9 @@ COPY scripts/ /app/scripts/
 # Copy reference data (Tiger Woods comparison data)
 COPY reference_data/ /app/reference_data/
 
+# Copy assets (fonts, logos — needed by image_generator.py)
+COPY assets/ /app/assets/
+
 # Copy backend application code
 COPY backend/ /app/
 

@@ -53,7 +53,19 @@ FOOTER_H   = 60 * _S
 SCORE_H    = H - TOP_H - FRAMES_H - FOOTER_H
 
 # ── Assets ───────────────────────────────────────────────
-_ROOT = Path(__file__).parent.parent.parent.parent
+# Resolve project root by searching upward for the assets directory.
+# Locally: image_generator.py is at backend/app/pipeline/ → root is 4 parents up.
+# Docker:  image_generator.py is at /app/app/pipeline/   → root is 3 parents up
+#          (because backend/ is copied into /app/).
+def _find_root() -> Path:
+    p = Path(__file__).resolve().parent
+    for _ in range(6):
+        if (p / "assets" / "fonts").is_dir():
+            return p
+        p = p.parent
+    return Path(__file__).resolve().parent.parent.parent.parent  # fallback
+
+_ROOT = _find_root()
 _LOGO = _ROOT / "assets" / "pure-logo-light.png"
 _LOGO_FALLBACK = _ROOT / "assets" / "pure-logo.jpeg"
 _FONT = _ROOT / "assets" / "fonts" / "Inter-Variable.ttf"
