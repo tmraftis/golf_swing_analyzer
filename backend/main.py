@@ -10,6 +10,7 @@ from app.routes.upload import router as upload_router
 from app.routes.analysis import router as analysis_router
 from app.routes.video import router as video_router
 from app.routes.share import router as share_router
+from app.analytics import flush as flush_analytics
 from app.storage.share_store import init_db as init_share_db
 
 logger = logging.getLogger(__name__)
@@ -44,6 +45,7 @@ async def lifespan(app: FastAPI):
     yield  # App runs here
 
     # Shutdown
+    flush_analytics()
     logger.info("Shutting down Pure API")
 
 

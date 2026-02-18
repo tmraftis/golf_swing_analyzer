@@ -13,6 +13,7 @@ from app.config import settings
 from app.models.schemas import AnalyzeRequest, AnalysisResponse
 from app.pipeline import run_analysis
 from app.pipeline.models import PipelineError, VideoNotFoundError
+from app.analytics import track_analysis_completed, track_analysis_failed
 from app.storage.analysis_store import get_result, has_result, save_result
 
 logger = logging.getLogger(__name__)
@@ -77,16 +78,53 @@ async def analyze_swing(
             ),
         )
     except VideoNotFoundError as e:
+        track_analysis_failed(
+            user_id=current_user.user_id,
+            upload_id=upload_id,
+            view=request.view,
+            swing_type=request.swing_type,
+            error_code=404,
+            error_message=str(e),
+        )
         raise HTTPException(404, str(e))
     except PipelineError as e:
         logger.error(f"Pipeline error for {upload_id}: {e}")
+        track_analysis_failed(
+            user_id=current_user.user_id,
+            upload_id=upload_id,
+            view=request.view,
+            swing_type=request.swing_type,
+            error_code=422,
+            error_message=str(e),
+        )
         raise HTTPException(422, str(e))
     except Exception as e:
         logger.exception(f"Unexpected error analyzing {upload_id}")
+        track_analysis_failed(
+            user_id=current_user.user_id,
+            upload_id=upload_id,
+            view=request.view,
+            swing_type=request.swing_type,
+            error_code=500,
+            error_message=str(e),
+        )
         raise HTTPException(500, f"Analysis failed: {str(e)}")
 
     # Cache and return
     save_result(cache_key, result)
+
+    track_analysis_completed(
+        user_id=current_user.user_id,
+        upload_id=upload_id,
+        view=request.view,
+        swing_type=request.swing_type,
+        processing_time_sec=result.get("processing_time_sec", 0),
+        similarity_score=result.get("similarity_score", 0),
+        top_faults=[
+            d.get("angle_name", "") for d in result.get("top_differences", [])
+        ],
+    )
+
     return result
 
 

@@ -3,6 +3,7 @@ import { Inter } from "next/font/google";
 import { AuthProvider } from "@propelauth/nextjs/client";
 import Header from "@/components/Header";
 import Footer from "@/components/Footer";
+import AnalyticsIdentifier from "@/lib/AnalyticsIdentifier";
 import "./globals.css";
 
 const inter = Inter({
@@ -25,6 +26,7 @@ export default function RootLayout({
     <html lang="en">
       <body className={`${inter.variable} font-sans antialiased`}>
         <AuthProvider authUrl={process.env.NEXT_PUBLIC_AUTH_URL!}>
+          <AnalyticsIdentifier />
           <Header />
           <main className="pt-16">{children}</main>
           <Footer />

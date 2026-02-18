@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from app.auth import require_user
 from app.config import settings
 from app.models.schemas import FileInfo, UploadResponse
+from app.analytics import track_upload_completed
 from app.storage.local import save_upload
 
 logger = logging.getLogger(__name__)
@@ -51,6 +52,15 @@ async def upload_videos(
     logger.info(f"Upload {upload_id} by user {current_user.user_id} (view={view})")
 
     filename, size = await save_upload(upload_id, view, video)
+
+    track_upload_completed(
+        user_id=current_user.user_id,
+        upload_id=upload_id,
+        view=view,
+        swing_type=swing_type,
+        file_size_bytes=size,
+        content_type=video.content_type or "video/mp4",
+    )
 
     return UploadResponse(
         status="success",

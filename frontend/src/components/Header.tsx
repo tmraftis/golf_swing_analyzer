@@ -3,6 +3,7 @@
 import Link from "next/link";
 import Image from "next/image";
 import { useUser, useLogoutFunction } from "@propelauth/nextjs/client";
+import { trackCTAClicked, trackAuthInitiated } from "@/lib/analytics";
 
 export default function Header() {
   const { loading, user } = useUser();
@@ -44,6 +45,7 @@ export default function Header() {
                 <Link
                   href="/api/auth/login"
                   className="text-cream/70 hover:text-cream text-sm font-medium transition-colors"
+                  onClick={() => trackAuthInitiated({ auth_type: "sign_in", source: "header" })}
                 >
                   Sign In
                 </Link>
@@ -52,6 +54,14 @@ export default function Header() {
                 href={loading ? "#" : "/api/auth/signup"}
                 className="bg-cardinal-red text-cream px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-cardinal-red/90 transition-colors"
                 aria-disabled={loading}
+                onClick={() => {
+                  trackCTAClicked({
+                    cta_text: "Get Started",
+                    cta_location: "header",
+                    destination: "/api/auth/signup",
+                  });
+                  trackAuthInitiated({ auth_type: "sign_up", source: "header" });
+                }}
               >
                 Get Started
               </Link>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useReducer } from "react";
+import { useEffect, useReducer } from "react";
 import { useRouter } from "next/navigation";
 import { useUser } from "@propelauth/nextjs/client";
 import type { SwingType, VideoAngle, VideoFile, UploadResponse } from "@/types";
@@ -9,6 +9,14 @@ import VideoDropZone from "./VideoDropZone";
 import SwingLoadingAnimation from "./SwingLoadingAnimation";
 import Button from "./Button";
 import { uploadVideo, analyzeSwing } from "@/lib/api";
+import {
+  trackPageView,
+  trackViewSelected,
+  trackUploadStarted,
+  trackUploadCompleted,
+  trackUploadFailed,
+  trackAnalysisStarted,
+} from "@/lib/analytics";
 
 interface UploadState {
   swingType: SwingType;
@@ -94,6 +102,10 @@ export default function UploadForm() {
   const router = useRouter();
   const { accessToken } = useUser();
 
+  useEffect(() => {
+    trackPageView("Upload");
+  }, []);
+
   const canSubmit =
     state.swingType === "iron" &&
     state.videoFile?.validated &&
@@ -105,6 +117,11 @@ export default function UploadForm() {
 
     // Step 1: Upload
     dispatch({ type: "UPLOAD_START" });
+    trackUploadStarted({
+      swing_type: state.swingType,
+      view: state.view as "dtl" | "fo",
+      file_size_bytes: state.videoFile.file.size,
+    });
     let uploadResult: UploadResponse;
     try {
       uploadResult = await uploadVideo(
@@ -114,10 +131,19 @@ export default function UploadForm() {
         accessToken || undefined
       );
       dispatch({ type: "UPLOAD_SUCCESS", payload: uploadResult });
+      trackUploadCompleted({
+        swing_type: state.swingType,
+        view: state.view as "dtl" | "fo",
+        file_size_bytes: state.videoFile.file.size,
+        upload_id: uploadResult.upload_id!,
+      });
     } catch (err) {
-      dispatch({
-        type: "UPLOAD_ERROR",
-        payload: err instanceof Error ? err.message : "Upload failed.",
+      const errorMsg = err instanceof Error ? err.message : "Upload failed.";
+      dispatch({ type: "UPLOAD_ERROR", payload: errorMsg });
+      trackUploadFailed({
+        swing_type: state.swingType,
+        view: state.view as "dtl" | "fo",
+        error_message: errorMsg,
       });
       return;
     }
@@ -125,6 +151,11 @@ export default function UploadForm() {
     // Step 2: Auto-trigger analysis, redirect on success
     if (uploadResult.upload_id) {
       dispatch({ type: "ANALYSIS_START" });
+      trackAnalysisStarted({
+        upload_id: uploadResult.upload_id,
+        swing_type: state.swingType,
+        view: state.view as "dtl" | "fo",
+      });
       try {
         await analyzeSwing(
           uploadResult.upload_id,
@@ -171,7 +202,10 @@ export default function UploadForm() {
         <h2 className="text-sm font-semibold mb-2 text-cream/60 uppercase tracking-wide">Camera Angle</h2>
         <div className="grid grid-cols-2 gap-3">
           <button
-            onClick={() => dispatch({ type: "SET_VIEW", payload: "dtl" })}
+            onClick={() => {
+              trackViewSelected({ view: "dtl", previous_view: state.view as "dtl" | "fo" });
+              dispatch({ type: "SET_VIEW", payload: "dtl" });
+            }}
             className={`relative rounded-lg border-2 p-4 text-left transition-colors ${
               state.view === "dtl"
                 ? "border-forest-green bg-forest-green/10"
@@ -200,7 +234,10 @@ export default function UploadForm() {
           </button>
 
           <button
-            onClick={() => dispatch({ type: "SET_VIEW", payload: "fo" })}
+            onClick={() => {
+              trackViewSelected({ view: "fo", previous_view: state.view as "dtl" | "fo" });
+              dispatch({ type: "SET_VIEW", payload: "fo" });
+            }}
             className={`relative rounded-lg border-2 p-4 text-left transition-colors ${
               state.view === "fo"
                 ? "border-forest-green bg-forest-green/10"

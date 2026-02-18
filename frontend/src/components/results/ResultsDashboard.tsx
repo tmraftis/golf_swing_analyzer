@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { AnalysisResponse, VideoAngle, SwingPhase } from "@/types";
 import VideoComparison from "./VideoComparison";
@@ -9,6 +9,12 @@ import DifferenceCard from "./DifferenceCard";
 import AngleComparisonTable from "./AngleComparisonTable";
 import ShareModal from "./ShareModal";
 import Button from "@/components/Button";
+import {
+  trackResultsViewed,
+  trackPhaseTabSwitched,
+  trackShareButtonClicked,
+  trackAnalyzeAnotherClicked,
+} from "@/lib/analytics";
 
 interface ResultsDashboardProps {
   analysis: AnalysisResponse;
@@ -57,9 +63,21 @@ function ScoreRing({ score }: { score: number }) {
 export default function ResultsDashboard({ analysis }: ResultsDashboardProps) {
   const [activePhase, setActivePhase] = useState<SwingPhase>("address");
   const [shareOpen, setShareOpen] = useState(false);
+  const previousPhaseRef = useRef<SwingPhase>("address");
 
   // Determine the single view from the data (whichever key exists)
   const activeView: VideoAngle = analysis.user_angles.dtl ? "dtl" : "fo";
+
+  // Track results viewed on mount
+  useEffect(() => {
+    trackResultsViewed({
+      upload_id: analysis.upload_id,
+      similarity_score: analysis.similarity_score ?? 0,
+      swing_type: analysis.swing_type,
+      view: activeView,
+      processing_time_sec: analysis.processing_time_sec,
+    });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
   const viewLabel = activeView === "dtl" ? "Down the Line" : "Face On";
 
   const hasVideos = analysis.video_urls && analysis.reference_video_urls;
@@ -103,7 +121,10 @@ export default function ResultsDashboard({ analysis }: ResultsDashboardProps) {
             {/* Share button */}
             <div className="shrink-0">
               <button
-                onClick={() => setShareOpen(true)}
+                onClick={() => {
+                  trackShareButtonClicked({ upload_id: analysis.upload_id, view: activeView });
+                  setShareOpen(true);
+                }}
                 className="group flex items-center gap-2.5 rounded-lg border border-cream/10 bg-cream/5 px-5 py-3 text-sm font-medium transition-all hover:bg-cardinal-red hover:border-cardinal-red hover:text-cream"
               >
                 <svg
@@ -142,7 +163,15 @@ export default function ResultsDashboard({ analysis }: ResultsDashboardProps) {
             referenceAngles={analysis.reference_angles}
             activeView={activeView}
             activePhase={activePhase}
-            onPhaseChange={setActivePhase}
+            onPhaseChange={(phase) => {
+              trackPhaseTabSwitched({
+                phase,
+                previous_phase: activePhase,
+                upload_id: analysis.upload_id,
+              });
+              previousPhaseRef.current = activePhase;
+              setActivePhase(phase);
+            }}
             userPhaseLandmarks={analysis.user_phase_landmarks}
             referencePhaseLandmarks={analysis.reference_phase_landmarks}
             userAllLandmarks={analysis.user_all_landmarks}
@@ -156,6 +185,12 @@ export default function ResultsDashboard({ analysis }: ResultsDashboardProps) {
           <PhaseTimeline
             activePhase={activePhase}
             onPhaseChange={(phase) => {
+              trackPhaseTabSwitched({
+                phase,
+                previous_phase: activePhase,
+                upload_id: analysis.upload_id,
+              });
+              previousPhaseRef.current = activePhase;
               setActivePhase(phase);
             }}
           />
@@ -184,7 +219,10 @@ export default function ResultsDashboard({ analysis }: ResultsDashboardProps) {
 
         {/* Actions */}
         <div className="flex justify-center pt-4">
-          <Link href="/upload">
+          <Link
+            href="/upload"
+            onClick={() => trackAnalyzeAnotherClicked({ from_upload_id: analysis.upload_id })}
+          >
             <Button variant="secondary" className="px-8 py-3">
               Analyze Another Swing
             </Button>

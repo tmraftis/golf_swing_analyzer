@@ -61,6 +61,9 @@ golf_swing_analyzer/
 ├── .gitignore
 ├── Golf Swing PRD Anlayzer v4.md          # Full product requirements document
 │
+├── docs/
+│   └── analytics-data-dictionary.md       # Full event schema reference (Segment + Amplitude)
+│
 ├── assets/
 │   └── pure-logo.jpeg                     # Brand logo (golfer silhouette)
 │
@@ -105,12 +108,33 @@ golf_swing_analyzer/
 │   │   │       └── ErrorState.tsx         # Error display
 │   │   ├── lib/
 │   │   │   ├── api.ts                     # API client with auth token support
+│   │   │   ├── analytics.ts               # Segment analytics singleton + typed event functions
 │   │   │   ├── validation.ts              # File type, size, duration checks
 │   │   │   └── constants.ts               # Brand values, limits, accepted types
 │   │   └── types/
 │   │       └── index.ts                   # TypeScript interfaces (angles, phases, videos, landmarks, frame data)
 │   ├── public/
 │   │   └── pure-logo.jpeg                 # Logo for frontend
+│   ├── e2e/                               # Playwright E2E tests
+│   │   ├── global-setup.ts               # PropelAuth login → save storage state
+│   │   ├── fixtures/
+│   │   │   ├── auth.ts                    # Custom test fixtures (authedPage / unauthPage)
+│   │   │   ├── helpers.ts                # Shared helpers (gotoWithRetry for ChunkLoadError)
+│   │   │   ├── mock-data.ts              # Mock API response factories
+│   │   │   ├── test-video.mp4            # 3s synthetic test video
+│   │   │   └── test-invalid.txt          # Invalid file for validation tests
+│   │   ├── pages/
+│   │   │   ├── home.page.ts              # Page object for /
+│   │   │   ├── upload.page.ts            # Page object for /upload
+│   │   │   ├── results.page.ts           # Page object for /results/[uploadId]
+│   │   │   └── shared.page.ts            # Page object for /shared/[shareToken]
+│   │   └── tests/
+│   │       ├── home.spec.ts              # Home page (public, dev+prod)
+│   │       ├── shared-results.spec.ts    # Shared results (public, dev mocked + prod smoke)
+│   │       ├── upload.spec.ts            # Upload flow (authenticated, dev only)
+│   │       ├── results.spec.ts           # Results page (authenticated, dev mocked + prod smoke)
+│   │       └── validation.spec.ts        # File validation (dev only)
+│   ├── playwright.config.ts               # Playwright config (dev + prod projects)
 │   ├── .env.local                         # API URL + PropelAuth credentials
 │   └── package.json
 │
@@ -124,6 +148,7 @@ golf_swing_analyzer/
 │   │   ├── config.py                      # Settings (upload, pipeline, Modal, PropelAuth, compression)
 │   │   ├── paths.py                       # Shared path constants (PROJECT_ROOT, SCRIPTS_DIR, etc.)
 │   │   ├── auth.py                        # PropelAuth init + require_user dependency
+│   │   ├── analytics.py                   # Segment server-side analytics + typed tracking functions
 │   │   ├── routes/
 │   │   │   ├── upload.py                  # POST /api/upload (auth required)
 │   │   │   ├── analysis.py               # POST /api/analyze, GET /api/analysis (auth required)
@@ -284,6 +309,8 @@ Set `NEXT_PUBLIC_API_URL=http://localhost:8000` in `frontend/.env.local` (alread
 | Video compression | ffmpeg (H.264, ~4Mbps, VFR-normalized, orientation-aware) | Backend |
 | Storage | Local filesystem (v1), cloud bucket planned | — |
 | Auth | PropelAuth (Google OAuth + Magic Link) | PropelAuth hosted |
+| Analytics | Segment (JS + Python SDKs) → Amplitude | Segment cloud |
+| E2E Testing | Playwright (Chromium) | Local / CI |
 
 ---
 
@@ -750,8 +777,16 @@ python scripts/build_reference_json.py
   - Landmark rounding to 4 decimal places absorbs GPU floating-point jitter
   - Modal model URL pinned to versioned path (`/float16/1/`) instead of `/latest/`
   - Hysteresis tie-breaking in phase detection (`_argmin_hysteresis()` / `_argmax_hysteresis()`)
+- **Analytics (Segment + Amplitude):**
+  - Frontend: `@segment/analytics-next` with typed event functions in `analytics.ts`
+  - Backend: `analytics-python` with server-side tracking in `analytics.py`
+  - Events: page views, CTA clicks, auth initiation, upload/analysis/share lifecycle, results interactions
+  - Data dictionary at `docs/analytics-data-dictionary.md`
 - **Testing:**
   - Pytest test suite with 60 tests covering comparison engine, feedback engine, image generator, phase detection, and schemas
+  - Playwright E2E tests: 5 spec files covering home, upload flow, results, shared results, and file validation
+  - Dev project: full suite with mocked APIs against localhost
+  - Prod project: smoke tests against swingpure.ai
   - Pre-commit hook for running tests
 - **Code quality:**
   - Extracted shared `app/paths.py` module (single source of truth for project paths)
@@ -818,6 +853,92 @@ Both Modal and local extractors now use `RunningMode.IMAGE` for deterministic ex
 1. **Left-handed golfer support** — future enhancement
 2. **Expand coaching drill content** — more drills per fault beyond the current single tip
 3. **Onboarding flow** — tutorial pop-up on first login
+
+---
+
+## Analytics
+
+Event tracking via **Segment** (frontend: `@segment/analytics-next`, backend: `analytics-python`) with **Amplitude** as a downstream destination.
+
+- **Frontend singleton:** `analytics.ts` lazily initializes `AnalyticsBrowser.load()` on first call. Never runs during SSR. Every component imports typed helper functions — no raw `track()` calls.
+- **Backend lazy init:** `analytics.py` reads `SEGMENT_WRITE_KEY` from env on first call.
+- **Graceful degradation:** All functions silently no-op when write keys are missing, so local development works without Segment configured.
+- **Events tracked:** Page views (Home, Upload, Shared Results), CTA clicks, auth initiation, view selection, video drops, upload lifecycle (started/completed/failed), analysis lifecycle (started/completed/failed), results viewed, phase tab switches, share creation/copy/download/social share, and share page views.
+
+See `docs/analytics-data-dictionary.md` for the full event schema reference.
+
+### Environment Variables
+
+| Variable | Location | Required | Description |
+|----------|----------|----------|-------------|
+| `NEXT_PUBLIC_SEGMENT_WRITE_KEY` | `frontend/.env.local` | No | Segment JavaScript source write key |
+| `SEGMENT_WRITE_KEY` | `backend/.env` | No | Segment server-side write key |
+
+---
+
+## E2E Tests (Playwright)
+
+End-to-end tests using **Playwright** cover critical user flows in both dev and prod environments.
+
+### Setup
+
+```bash
+cd frontend
+npm install                      # installs @playwright/test
+npx playwright install           # downloads browser binaries
+```
+
+### Environment Variables
+
+```bash
+# Required for authenticated tests
+export E2E_TEST_EMAIL=e2e-test@swingpure.ai
+export E2E_TEST_PASSWORD=<password>
+
+# Optional — for prod smoke tests
+export E2E_PROD_SHARE_TOKEN=<known-share-token>
+export E2E_PROD_UPLOAD_ID=<known-upload-id>
+```
+
+Create a test user in the PropelAuth dashboard before running E2E tests.
+
+### Running Tests
+
+```bash
+# Dev tests (full suite against localhost:3000)
+npm run test:e2e
+
+# Prod smoke tests (against swingpure.ai)
+npm run test:e2e:prod
+
+# All projects
+npm run test:e2e:all
+
+# Interactive UI mode
+npm run test:e2e:ui
+
+# Open last HTML report
+npm run test:e2e:report
+```
+
+### Test Matrix
+
+| Test File | Dev | Prod | Auth | Description |
+|-----------|:---:|:----:|:----:|-------------|
+| `home.spec.ts` | ✅ | ✅ | Both | Hero CTA, header auth state |
+| `shared-results.spec.ts` | ✅ | ✅ | No | Public share page (mocked in dev, real token in prod) |
+| `upload.spec.ts` | ✅ | ❌ | Yes | Full upload → analysis → results flow |
+| `results.spec.ts` | ✅ | ✅ | Yes | Results dashboard (mocked in dev, real data in prod) |
+| `validation.spec.ts` | ✅ | ❌ | Yes | Client-side file validation |
+
+### Architecture
+
+- **Two projects:** `dev` (full suite, mocked APIs, localhost) and `prod` (smoke tests only)
+- **Page objects:** `e2e/pages/` — encapsulate selectors for each page
+- **Auth:** PropelAuth storage state via `global-setup.ts` — log in once, reuse across all tests; tests gracefully skip when credentials are unavailable
+- **API mocking:** `page.route()` intercepts for dev tests with predictable mock data (scoped to `localhost:8000` to avoid intercepting Next.js internal routes)
+- **Retry on ChunkLoadError:** `gotoWithRetry()` helper retries page loads up to 2 times to handle transient Next.js Turbopack dev server failures; Playwright config retries failed tests once locally and twice on CI
+- **Sequential execution:** Single worker to avoid auth state conflicts
 
 ---
 

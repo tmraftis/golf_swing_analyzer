@@ -1,10 +1,16 @@
 "use client";
 
+import { useEffect } from "react";
 import Link from "next/link";
 import { useUser } from "@propelauth/nextjs/client";
+import { trackPageView, trackCTAClicked, trackAuthInitiated } from "@/lib/analytics";
 
 export default function HeroSection() {
   const { loading, user } = useUser();
+
+  useEffect(() => {
+    trackPageView("Home");
+  }, []);
 
   return (
     <section className="relative min-h-screen flex items-center justify-center px-6">
@@ -22,6 +28,17 @@ export default function HeroSection() {
           href={loading ? "#" : user ? "/upload" : "/api/auth/signup"}
           className="inline-block bg-cardinal-red text-cream px-8 py-3 rounded-lg text-base font-semibold hover:bg-cardinal-red/90 transition-colors"
           aria-disabled={loading}
+          onClick={() => {
+            const dest = user ? "/upload" : "/api/auth/signup";
+            trackCTAClicked({
+              cta_text: user ? "Start Your Analysis" : "Get Started",
+              cta_location: "hero",
+              destination: dest,
+            });
+            if (!user) {
+              trackAuthInitiated({ auth_type: "sign_up", source: "hero" });
+            }
+          }}
         >
           {loading ? "Get Started" : user ? "Start Your Analysis" : "Get Started"}
         </Link>

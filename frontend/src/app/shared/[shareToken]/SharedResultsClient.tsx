@@ -7,6 +7,7 @@ import type { SharedAnalysis, SwingPhase } from "@/types";
 import { PHASE_LABELS } from "@/types";
 import DifferenceCard from "@/components/results/DifferenceCard";
 import Button from "@/components/Button";
+import { trackPageView } from "@/lib/analytics";
 
 interface SharedResultsClientProps {
   shareToken: string;
@@ -21,6 +22,7 @@ export default function SharedResultsClient({
   const [activePhase, setActivePhase] = useState<SwingPhase>("impact");
 
   useEffect(() => {
+    trackPageView("Shared Results");
     getSharedAnalysis(shareToken)
       .then(setData)
       .catch((err: Error) => setError(err.message))
