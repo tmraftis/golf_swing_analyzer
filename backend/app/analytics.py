@@ -1,8 +1,8 @@
 """Server-side Segment analytics for reliable event tracking.
 
-Initializes the analytics-python client with the SEGMENT_WRITE_KEY env var.
-No-ops when the key is missing (local dev).  All public functions accept
-user_id as the first argument for Segment's identity resolution.
+Initializes the segment-analytics-python (v2) client with the SEGMENT_WRITE_KEY
+env var.  No-ops when the key is missing (local dev).  All public functions
+accept user_id as the first argument for Segment's identity resolution.
 """
 
 import logging
@@ -26,7 +26,7 @@ def _get_client():
         return None
 
     try:
-        import analytics as segment_analytics
+        import segment.analytics as segment_analytics
 
         segment_analytics.write_key = write_key
         segment_analytics.max_queue_size = 10
@@ -34,7 +34,7 @@ def _get_client():
         _client = segment_analytics
         logger.info("Segment analytics initialized (server-side)")
     except ImportError:
-        logger.warning("analytics-python not installed — analytics disabled")
+        logger.warning("segment-analytics-python not installed — analytics disabled")
 
     return _client
 
