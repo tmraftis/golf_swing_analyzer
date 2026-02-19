@@ -211,11 +211,9 @@ export default function SharedResultsClient({
 
         {/* Branding footer */}
         <div className="text-center text-cream/30 text-xs">
-          Powered by{" "}
           <Link href="/" className="text-cream/50 hover:text-cream underline">
-            Pure
-          </Link>{" "}
-          — Swing pure.
+            Swing pure
+          </Link>
         </div>
       </div>
     </div>
