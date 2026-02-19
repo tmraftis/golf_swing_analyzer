@@ -20,7 +20,7 @@ export default function Header() {
             height={36}
             className="rounded-sm invert"
           />
-          <span className="font-semibold tracking-widest text-lg">
+          <span className="font-semibold tracking-widest text-lg hidden sm:inline">
             <span className="text-pastel-yellow">SWING</span>{" "}
             <span className="text-cream">PURE</span>
           </span>
