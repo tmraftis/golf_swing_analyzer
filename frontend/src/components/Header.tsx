@@ -44,7 +44,7 @@ export default function Header() {
               {!loading && (
                 <Link
                   href="/api/auth/login"
-                  className="text-cream/70 hover:text-cream text-sm font-medium transition-colors"
+                  className="text-cream/70 hover:text-cream text-sm font-medium transition-colors whitespace-nowrap"
                   onClick={() => trackAuthInitiated({ auth_type: "sign_in", source: "header" })}
                 >
                   Sign In
