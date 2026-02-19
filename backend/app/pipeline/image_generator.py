@@ -253,49 +253,6 @@ def _draw_ring(canvas: Image.Image, cx: int, cy: int, r: int, score: int, show_p
         draw.text((text_x, text_y), score_str, fill=CREAM, font=f_num)
 
 
-# ── Diff row ─────────────────────────────────────────────
-
-def _draw_diff_row(draw: ImageDraw.ImageDraw, diff: dict, x: int, y: int, w: int, h: int):
-    """Draw a single compact difference card."""
-    # Card bg
-    draw.rounded_rectangle([(x, y), (x + w, y + h)], radius=14, fill=BG_CARD)
-
-    # Left accent line
-    accent = _sev_color(diff.get("severity", "minor"))
-    draw.rounded_rectangle([(x, y + 8), (x + 3, y + h - 8)], radius=2, fill=accent)
-
-    px, py = x + 18, y + 14
-
-    # Rank
-    rank = str(diff.get("rank", "?"))
-    f_rank = _f(11, bold=True)
-    draw.text((px, py + 1), f"#{rank}", fill=CREAM45, font=f_rank)
-
-    # Title
-    title = diff.get("title", diff.get("angle_name", ""))
-    if len(title) > 22:
-        title = title[:20] + "\u2026"
-    draw.text((px + 22, py), title, fill=CREAM, font=_f(14, bold=True))
-    py += 26
-
-    # Delta — the hero number
-    delta = diff.get("delta", 0)
-    sign = "+" if delta > 0 else ""
-    draw.text((px, py), f"{sign}{delta:.1f}\u00b0", fill=accent, font=_f(26, bold=True))
-    py += 34
-
-    # You · Tiger
-    uv = diff.get("user_value", 0)
-    rv = diff.get("reference_value", 0)
-    draw.text((px, py), f"You {uv:.0f}\u00b0  \u2022  Tiger {rv:.0f}\u00b0", fill=CREAM45, font=_f(12))
-    py += 18
-
-    # Phase
-    phase = diff.get("phase", "").replace("_", " ").title()
-    view = "DTL" if diff.get("view") == "dtl" else "FO"
-    draw.text((px, py), f"{phase} \u2022 {view}", fill=CREAM20, font=_f(11))
-
-
 # ── Public API ───────────────────────────────────────────
 
 def _draw_card_column(
@@ -354,7 +311,7 @@ def _draw_card_column(
         # Title + phase — pixel-aware truncation
         title = item.get("title", item.get("angle_name", ""))
         f_title = _f(12 * S, bold=True)
-        max_title_w = w - 22 * S - 70 * S   # leave room for delta on right
+        max_title_w = w - 22 * S - 10 * S   # full width minus padding
         bb_t = draw.textbbox((0, 0), title, font=f_title)
         if (bb_t[2] - bb_t[0]) > max_title_w:
             while len(title) > 5 and draw.textbbox((0, 0), title + "\u2026", font=f_title)[2] > max_title_w:
@@ -374,32 +331,19 @@ def _draw_card_column(
             font=_f(9 * S),
         )
 
-        # Delta on the right
+        # Severity badge on the right (no angle values)
         if show_delta:
-            delta = item.get("delta", 0)
-            sign = "+" if delta > 0 else ""
-            delta_str = f"{sign}{delta:.1f}\u00b0"
-            f_delta = _f(14 * S, bold=True)
-            bb_d = draw.textbbox((0, 0), delta_str, font=f_delta)
-            tw_d = bb_d[2] - bb_d[0]
+            severity = item.get("severity", "minor")
+            badge_text = severity.upper()
+            f_badge = _f(8 * S, bold=True)
+            badge_color = _sev_color(severity)
+            bb_b = draw.textbbox((0, 0), badge_text, font=f_badge)
+            tw_b = bb_b[2] - bb_b[0]
             draw.text(
-                (x + w - tw_d - 10 * S, ry + (row_h - (bb_d[3] - bb_d[1])) // 2),
-                delta_str,
-                fill=dot_color,
-                font=f_delta,
-            )
-        else:
-            # Show a small checkmark or delta for similarities
-            delta = item.get("delta", 0)
-            delta_str = f"{abs(delta):.1f}\u00b0"
-            f_delta = _f(13 * S, bold=True)
-            bb_d = draw.textbbox((0, 0), delta_str, font=f_delta)
-            tw_d = bb_d[2] - bb_d[0]
-            draw.text(
-                (x + w - tw_d - 10 * S, ry + (row_h - (bb_d[3] - bb_d[1])) // 2),
-                delta_str,
-                fill=accent_color,
-                font=f_delta,
+                (x + w - tw_b - 10 * S, ry + (row_h - (bb_b[3] - bb_b[1])) // 2),
+                badge_text,
+                fill=badge_color,
+                font=f_badge,
             )
 
 

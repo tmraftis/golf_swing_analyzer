@@ -6,7 +6,6 @@ import type { AnalysisResponse, VideoAngle, SwingPhase } from "@/types";
 import VideoComparison from "./VideoComparison";
 import PhaseTimeline from "./PhaseTimeline";
 import DifferenceCard from "./DifferenceCard";
-import AngleComparisonTable from "./AngleComparisonTable";
 import ShareModal from "./ShareModal";
 import Button from "@/components/Button";
 import {
@@ -207,15 +206,6 @@ export default function ResultsDashboard({ analysis }: ResultsDashboardProps) {
             ))}
           </div>
         </div>
-
-        {/* Angle comparison table */}
-        <AngleComparisonTable
-          userAngles={analysis.user_angles}
-          referenceAngles={analysis.reference_angles}
-          deltas={analysis.deltas}
-          activePhase={activePhase}
-          topDifferences={analysis.top_differences}
-        />
 
         {/* Actions */}
         <div className="flex justify-center pt-4">

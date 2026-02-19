@@ -67,32 +67,6 @@ export default function DifferenceCard({ diff, onClick }: DifferenceCardProps) {
         {diff.description}
       </p>
 
-      <div className="flex items-center gap-4 mb-4 text-sm">
-        <div className="flex items-center gap-2">
-          <span className="text-cream/40">You:</span>
-          <span className="font-mono font-medium">
-            {diff.user_value.toFixed(1)}&deg;
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-cream/40">Tiger:</span>
-          <span className="font-mono font-medium text-pastel-yellow">
-            {diff.reference_value.toFixed(1)}&deg;
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="text-cream/40">Diff:</span>
-          <span
-            className={`font-mono font-medium ${
-              Math.abs(diff.delta) > 15 ? "text-cardinal-red" : "text-cream/80"
-            }`}
-          >
-            {diff.delta > 0 ? "+" : ""}
-            {diff.delta.toFixed(1)}&deg;
-          </span>
-        </div>
-      </div>
-
       <div className="rounded-lg bg-forest-green/10 border border-forest-green/20 p-4">
         <div className="flex items-start gap-2">
           <svg
