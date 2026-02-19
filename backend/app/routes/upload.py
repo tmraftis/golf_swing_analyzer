@@ -6,7 +6,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from app.auth import require_user
 from app.config import settings
 from app.models.schemas import FileInfo, UploadResponse
-from app.analytics import track_upload_completed
+from app.analytics import identify_user, track_upload_completed
 from app.storage.local import save_upload
 
 logger = logging.getLogger(__name__)
@@ -46,6 +46,13 @@ async def upload_videos(
 
     # Validate file
     _validate_file(video, f"video_{view}")
+
+    # Identify user in Segment (once per process lifetime)
+    identify_user(current_user.user_id, {
+        "email": getattr(current_user, "email", None),
+        "first_name": getattr(current_user, "first_name", None),
+        "last_name": getattr(current_user, "last_name", None),
+    })
 
     # Generate upload ID and save
     upload_id = str(uuid.uuid4())

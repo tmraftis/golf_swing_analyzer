@@ -39,6 +39,25 @@ def _get_client():
     return _client
 
 
+# ─── Identity ────────────────────────────────────────────────────
+
+_identified: set[str] = set()
+
+
+def identify_user(user_id: str, traits: dict | None = None):
+    """Send a Segment identify call (once per process per user).
+
+    Deduplicates so we only identify each user_id once per server
+    lifetime — avoids flooding Segment with redundant identify calls.
+    """
+    if user_id in _identified:
+        return
+    client = _get_client()
+    if client:
+        client.identify(user_id, traits or {})
+        _identified.add(user_id)
+
+
 # ─── Typed tracking functions ─────────────────────────────────────
 
 
