@@ -52,7 +52,7 @@ export default function Header() {
               )}
               <Link
                 href={loading ? "#" : "/api/auth/signup"}
-                className="bg-cardinal-red text-cream px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-cardinal-red/90 transition-colors"
+                className="bg-cardinal-red text-cream px-5 py-2.5 rounded-lg text-sm font-medium hover:bg-cardinal-red/90 transition-colors whitespace-nowrap"
                 aria-disabled={loading}
                 onClick={() => {
                   trackCTAClicked({
